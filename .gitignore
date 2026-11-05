@@ -1,0 +1,24 @@
+# Secretos y configuración local
+.env
+*.env.local
+local.properties
+*.jks
+*.keystore
+
+# Node
+node_modules/
+backend/data/eventos.jsonl
+
+# Android / Gradle
+.gradle/
+build/
+*.apk
+*.aab
+.idea/
+*.iml
+captures/
+.cxx/
+
+# Sistema
+.DS_Store
+Thumbs.db

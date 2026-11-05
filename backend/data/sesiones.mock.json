@@ -1,0 +1,26 @@
+{
+  "_aviso": "DATOS PROVISIONALES (MOCK). Sesiones ficticias para desarrollo del Entregable 3. Se reemplazan por el módulo de Sesiones real (E5, HU-24).",
+  "sesiones": [
+    {
+      "id_sesion": "SES-MOCK-001",
+      "qr_token": "demo-activa-001",
+      "estado": "activa",
+      "qr_estado": "activo",
+      "establecimiento": { "id_establecimiento": "EST-MOCK-001", "nombre": "La Nota Bar (demo)" }
+    },
+    {
+      "id_sesion": "SES-MOCK-002",
+      "qr_token": "demo-cerrada-002",
+      "estado": "cerrada",
+      "qr_estado": "inactivo",
+      "establecimiento": { "id_establecimiento": "EST-MOCK-002", "nombre": "Café Sonoro (demo)" }
+    },
+    {
+      "id_sesion": "SES-MOCK-003",
+      "qr_token": "demo-qr-desactivado-003",
+      "estado": "activa",
+      "qr_estado": "inactivo",
+      "establecimiento": { "id_establecimiento": "EST-MOCK-003", "nombre": "Ritmo 360 (demo)" }
+    }
+  ]
+}
