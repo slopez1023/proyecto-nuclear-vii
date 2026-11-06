@@ -1,7 +1,7 @@
 # Informe de cierre y auditoría — Entregable 3
 
 **Proyecto Nuclear VII — Módulo de acceso y búsqueda para clientes (PMV).**
-Elaborado el 2026-11-05 a partir del estado del repositorio (rama `develop`, último commit antes de este informe: `064e6d1`). Todo lo que figura como probado se ejecutó; lo que no se hizo figura como pendiente. Este informe **no registra reuniones ni aprobaciones del equipo**: donde hace falta una decisión o una revisión se indica "pendiente".
+Elaborado el 2026-11-05 a partir del estado del repositorio (rama `develop`, último commit antes de este informe: `9eeddf1`). Todo lo que figura como probado se ejecutó; lo que no se hizo figura como pendiente. Este informe **no registra reuniones ni aprobaciones del equipo**: donde hace falta una decisión o una revisión se indica "pendiente".
 
 ## 1. Resumen ejecutivo
 
