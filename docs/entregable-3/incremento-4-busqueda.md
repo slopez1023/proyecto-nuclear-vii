@@ -1,15 +1,54 @@
 # Incremento 4 — Búsqueda, autocompletado, detalle e integración YouTube (B03, B04, B05, B16)
 
-## Estado real de cada historia
+## Estado real de cada historia (tras la prueba en dispositivo físico)
 
-| Historia | Estado | Verificado | Falta |
-|---|---|---|---|
-| B16 Integración con YouTube | **Parcial** | Pruebas reales con la clave de `backend/.env` (3/3). Resultados reales de YouTube (título, canal, duración, ID) llegan por el backend y se ven en la app Android en el emulador. | Ver miniaturas cargadas. Validación de disponibilidad y reproducción son de entregables posteriores. |
-| B03 Búsqueda | **Parcial** | Búsqueda real en el emulador; estados sin resultados y sin conexión con "Reintentar"; tiempo medido (abajo). | Medición en teléfono real y con red real. |
-| B04 Autocompletado | **Parcial** | Sugerencias reales aparecen mientras se escribe (`inc4-02`). | Decidir qué hacer con la cuota. |
-| B05 Información y miniaturas | **Parcial** | Título, canal, duración y detalle verificados en pantalla. | **Miniaturas no cargaron** (ver abajo). |
+Resultados con **YouTube real → backend local → app Android en un TECNO KL8 físico** (Android 14, API 34, red móvil LTE, backend por túnel USB con `adb reverse`). Ver la matriz completa en [trazabilidad.md](trazabilidad.md).
 
-## Validación en emulador (Pixel_10_ProyectoNuclear, API 37)
+| Historia | Estado | Qué se verificó |
+|---|---|---|
+| B03 Búsqueda | **Verificada en dispositivo físico (backend local)** | Búsqueda real, resultados con título, canal, duración y miniatura; sin resultados y error de conexión (emulador); datos listos en 0.57–1.14 s. |
+| B04 Autocompletado | **Verificada funcionalmente; riesgo de cuota abierto** | Sugerencias reales mientras se escribe. Cada consulta cuesta 100 unidades de cuota (ver abajo). |
+| B05 Información y miniaturas | **Verificada en dispositivo físico (backend local)** | Miniaturas reales en la lista y en el detalle, con título, canal, duración, disponibilidad e ID. |
+| B16 Integración YouTube | **Verificada en dispositivo físico (backend local)** | Datos reales de YouTube llegan por el backend y se ven en el teléfono; errores de cuota y clave inválida clasificados (pruebas reales y unitarias). |
+
+Reservas comunes: el backend corre en el equipo de desarrollo (no hay despliegue), la sesión de acceso es MOCK, la app se abrió con un enlace de `adb` y no escaneando un QR, y no se probó en tabletas.
+
+## Validación en dispositivo físico (TECNO KL8)
+
+Se comprobó con `adb devices -l` que el único dispositivo era el TECNO KL8 (serie omitida) y que no había emulador activo; todos los comandos usaron `-s` con esa serie.
+
+| Prueba | Resultado | Evidencia |
+|---|---|---|
+| Enlace de acceso, Entrar, Inicio, Buscar | Correcto (arranque de la app: 1.6 s) | — |
+| Autocompletado con "Shakira" | 5 sugerencias reales | `inc4-dispositivo-01-autocompletado.png` |
+| Búsqueda "Shakira" | Resultados reales **con miniaturas cargadas** | `inc4-dispositivo-02-resultados-miniaturas.png` |
+| Detalle de "Shakira - Soltera" | Miniatura grande, título, canal, "Duración 4:09", "Disponible", ID `oBofuVYDoG4` | `inc4-dispositivo-03-detalle.png` |
+| Resultados a ~1 s de pulsar buscar | Lista con miniaturas ya visibles (Mon Laferte) | `inc4-dispositivo-04-a-1s-de-buscar.png` |
+| Resultados a ~2 s de pulsar buscar | Lista con miniaturas (Sebastián Yatra) | `inc4-dispositivo-05-a-2s-de-buscar.png` |
+
+### Tiempos en el teléfono
+
+Cronómetro temporal en `BuscarViewModel` (desde que se pulsa buscar hasta que el estado de resultados está listo; **ya revertido**, no está en el código):
+
+| Consulta nueva | Tiempo |
+|---|---|
+| Shakira | 960 ms |
+| Feid Normal | 570 ms |
+| Maluma Felices los 4 | 679 ms |
+| Rosalia Despecha | 886 ms |
+| Bad Bunny Titi | 574 ms |
+| Juanes La Camisa Negra | 729 ms |
+| Daddy Yankee Gasolina | 1141 ms |
+| Sebastian Yatra Traidor | 739 ms |
+| Mon Laferte Tu Falta De Amor | 704 ms |
+| Feid Normal repetida (caché) | 1 ms |
+
+- **Backend** (medido con `curl`, incluye dos llamadas a YouTube): 0.78–0.85 s por consulta nueva, 0.04 s con caché.
+- **App, datos listos:** 570–1141 ms (mediana ~0.73 s), todas por debajo de 2 s.
+- **Tiempo percibido:** con una espera de ~1 s tras pulsar buscar, la lista con miniaturas ya estaba en pantalla. El método (captura tras `sleep`) tiene una precisión de unos 0.3 s y solo da una cota superior; no es un cronómetro de render.
+- **Límites:** 10 muestras con backend local conectado por USB y red móvil del teléfono. Un backend desplegado añadiría la latencia de red entre el teléfono y el servidor; el criterio de 2 s no está validado en un entorno desplegado.
+
+## Validación previa en emulador (Pixel_10_ProyectoNuclear, API 37)
 
 El emulador arrancó con Cold Boot sin problemas y sin consumir espacio (disco con ~15 GB libres). No se usó Wipe Data ni se tocó el AVD. Backend local con la clave real y `adb reverse tcp:3000 tcp:3000`.
 
@@ -23,7 +62,7 @@ El emulador arrancó con Cold Boot sin problemas y sin consumir espacio (disco c
 | Backend caído | "Sin conexión" con Reintentar | `inc4-06-error-conexion.png` |
 | **Miniaturas** | **No cargan: recuadro gris** | `inc4-03`, `inc4-04` |
 
-### Por qué no cargan las miniaturas
+### Por qué no cargaban las miniaturas en el emulador
 
 Desde el emulador, **todo HTTPS** a Internet falla: logcat muestra `SSLHandshakeException: Trust anchor for certification path not found` (incluso para `https://www.google.com/generate_204`, la prueba de conectividad del propio Android). Es el escaneo HTTPS del antivirus del equipo (Avast) que reemplaza los certificados con uno propio que Android no conoce. El backend en Node sí funciona porque confía en el certificado de Avast mediante `NODE_EXTRA_CA_CERTS`. No es un fallo de la app: la URL de la miniatura llega correcta (`https://i.ytimg.com/...`), pero la descarga de imágenes falla en este entorno. Por eso **B05 y B16 no se marcan completas**.
 
