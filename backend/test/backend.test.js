@@ -160,3 +160,13 @@ test('HTTP /api/eventos, assetlinks y cliente web /s/:token', async () => {
     assert.match(await web.text(), /Busca una canción/);
   });
 });
+
+test('el cliente web usa las mismas medidas de autocompletado que la app (3 caracteres, 450 ms)', async () => {
+  await conServidor(ytOk, async (base) => {
+    const html = await (await fetch(`${base}/s/demo-activa-001`)).text();
+    assert.match(html, /MIN_SUGERENCIA = 3/);
+    assert.match(html, /DEBOUNCE_MS = 450/);
+    assert.match(html, /clearTimeout\(timer\); seq\+\+/); // buscar cancela la sugerencia pendiente
+  });
+});
+

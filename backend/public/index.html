@@ -85,11 +85,12 @@
       '<button type="submit" aria-label="Buscar">Buscar</button></form>' +
       '<div id="sug"></div><div id="res"></div>' +
       '<p class="privacy">Sin nombre, correo ni datos personales.</p>';
+    var MIN_SUGERENCIA = 3, DEBOUNCE_MS = 450; // mismas medidas que la app Android (cuota de search.list)
     var q = document.getElementById('q'), sug = document.getElementById('sug'), res = document.getElementById('res'), timer, seq = 0;
 
     q.addEventListener('input', function () {
       clearTimeout(timer); var v = q.value.trim();
-      if (v.length < 2) { sug.innerHTML = ''; return; }
+      if (v.length < MIN_SUGERENCIA) { sug.innerHTML = ''; return; }
       timer = setTimeout(function () {
         var mine = ++seq;
         fetch('/api/busqueda/sugerencias?q=' + encodeURIComponent(v)).then(function (r) { return r.ok ? r.json() : { sugerencias: [] }; })
@@ -98,12 +99,12 @@
             sug.innerHTML = j.sugerencias.length ? '<ul class="sug">' + j.sugerencias.map(function (s) { return '<li>' + esc(s) + '</li>'; }).join('') + '</ul>' : '';
             Array.prototype.forEach.call(sug.querySelectorAll('li'), function (li) { li.addEventListener('click', function () { q.value = li.textContent; buscar(); }); });
           }).catch(function () {});
-      }, 350);
+      }, DEBOUNCE_MS);
     });
     document.getElementById('f').addEventListener('submit', function (e) { e.preventDefault(); buscar(); });
 
     function buscar() {
-      var v = q.value.trim(); sug.innerHTML = '';
+      var v = q.value.trim(); sug.innerHTML = ''; clearTimeout(timer); seq++; // cancela sugerencias pendientes
       if (v.length < 2) { res.innerHTML = '<p>Escribe al menos 2 caracteres.</p>'; return; }
       res.innerHTML = '<p>Buscando…</p>';
       fetch('/api/busqueda?q=' + encodeURIComponent(v)).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })

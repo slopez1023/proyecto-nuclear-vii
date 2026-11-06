@@ -1,0 +1,74 @@
+name: Android
+
+# Compila la app y ejecuta las pruebas unitarias. No usa secretos ni la API Key de YouTube.
+on:
+  push:
+    branches: [develop, main]
+    paths:
+      - 'cliente-android/**'
+      - 'backend/test/fixtures/**' # las pruebas de eventos leen el contrato compartido
+      - '.github/workflows/android.yml'
+  pull_request:
+    paths:
+      - 'cliente-android/**'
+      - 'backend/test/fixtures/**'
+      - '.github/workflows/android.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Pruebas unitarias y compilación
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: cliente-android
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Verificar que no hay claves de API en el código
+        working-directory: .
+        run: |
+          if git grep -nE 'AIza[0-9A-Za-z_-]{35}' -- . ':!*.md'; then
+            echo "Se encontró una posible clave de API versionada." >&2
+            exit 1
+          fi
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # AGP 9.5 compila contra la plataforma 37 y exige Build Tools 36.0.0 (ver docs/entregable-3/versiones-android.md)
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: 'platforms;android-37.0 build-tools;36.0.0'
+
+      - uses: gradle/actions/setup-gradle@v6
+
+      - name: Pruebas unitarias y APK de depuración
+        run: ./gradlew testDebugUnitTest assembleDebug --console=plain
+
+      - name: Subir reportes de pruebas
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-reportes-de-pruebas
+          path: |
+            cliente-android/app/build/reports/tests/testDebugUnitTest
+            cliente-android/app/build/test-results/testDebugUnitTest
+          if-no-files-found: warn
+
+      - name: Subir APK de depuración
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-apk-debug
+          path: cliente-android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 7
