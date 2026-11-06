@@ -66,7 +66,7 @@ El emulador arrancó con Cold Boot sin problemas y sin consumir espacio (disco c
 
 Desde el emulador, **todo HTTPS** a Internet falla: logcat muestra `SSLHandshakeException: Trust anchor for certification path not found` (incluso para `https://www.google.com/generate_204`, la prueba de conectividad del propio Android). Es el escaneo HTTPS del antivirus del equipo (Avast) que reemplaza los certificados con uno propio que Android no conoce. El backend en Node sí funciona porque confía en el certificado de Avast mediante `NODE_EXTRA_CA_CERTS`. No es un fallo de la app: la URL de la miniatura llega correcta (`https://i.ytimg.com/...`), pero la descarga de imágenes falla en este entorno. Por eso **B05 y B16 no se marcan completas**.
 
-Opciones para resolverlo (decisión del equipo):
+Opciones para resolverlo (decisión pendiente):
 1. Desactivar temporalmente el escaneo HTTPS de Avast mientras se prueba.
 2. Probar en un teléfono físico con otra red.
 3. Añadir, solo en el build debug, el certificado raíz de Avast como ancla de confianza (modifica la configuración de seguridad de la app de desarrollo).
@@ -106,12 +106,12 @@ Backend medido con `curl` (consultas nuevas, incluye dos llamadas a YouTube): 0.
 
 - Toda petición, incluso inválida, cuesta al menos 1 unidad.
 - El cupo se reinicia a medianoche, hora del Pacífico.
-- Para más cupo hay que llenar el formulario *Quota Extension Request* (no se ha solicitado, por decisión del equipo).
+- Para más cupo hay que llenar el formulario *Quota Extension Request* (no se ha solicitado; así lo indicó el líder técnico).
 - El valor real del proyecto se consulta en Google Cloud Console; lo anterior son los valores por defecto de la documentación.
 
 **Qué significa para el proyecto:** cada búsqueda del backend hace 1 `search.list` (cupo de 100 al día) y 1 `videos.list` (1 unidad del cupo de 10 000). El autocompletado hace exactamente lo mismo. El límite que importa es el de **100 llamadas `search.list` al día por proyecto**; el cupo de 10 000 unidades no corre riesgo. En la práctica el techo sigue siendo de unas 100 búsquedas o sugerencias al día, pero el cálculo en unidades del informe anterior era incorrecto. Las pruebas de desarrollo (reales, en emulador y en el teléfono) gastan del mismo cupo.
 
-**Decisión del equipo (2026-11-05):** se mantiene el autocompletado remoto de YouTube para el Entregable 3 con las medidas actuales: mínimo 3 caracteres, espera de 450 ms, caché de 5 minutos en backend y app, y sin solicitudes duplicadas. No se solicita cuota adicional ni se cambia la estrategia de búsqueda sin consultar. El riesgo sigue abierto: un piloto con varios usuarios agotaría las 100 llamadas diarias.
+**Decisión del líder técnico (2026-11-05), pendiente de ratificar con Juan Camilo y Karen:** se mantiene el autocompletado remoto de YouTube para el Entregable 3 con las medidas actuales: mínimo 3 caracteres, espera de 450 ms, caché de 5 minutos en backend y app, y sin solicitudes duplicadas. No se solicita cuota adicional ni se cambia la estrategia de búsqueda sin consultar. El riesgo sigue abierto: un piloto con varios usuarios agotaría las 100 llamadas diarias.
 
 Fuentes: [Cálculo de cuota](https://developers.google.com/youtube/v3/determine_quota_cost), [Primeros pasos: uso de cuota](https://developers.google.com/youtube/v3/getting-started), [Historial de revisiones](https://developers.google.com/youtube/v3/revision_history) (entradas del 1 y 3 de junio de 2026).
 

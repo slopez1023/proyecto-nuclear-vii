@@ -10,7 +10,7 @@ import java.util.UUID
 /**
  * Identificación única y seudónima del dispositivo (B07).
  *
- * Decisión del equipo: UUID aleatorio generado en el primer arranque y guardado en DataStore.
+ * Decisión de diseño del E3: UUID aleatorio generado en el primer arranque y guardado en DataStore.
  * No usa IMEI, número telefónico ni ANDROID_ID, y no requiere permisos. Se pierde si el usuario
  * borra los datos de la app o la desinstala; el documento del proyecto admite que no siempre
  * se reconoce al mismo dispositivo.
