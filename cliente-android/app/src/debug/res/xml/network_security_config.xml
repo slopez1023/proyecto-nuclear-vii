@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    SOLO BUILD DEBUG: permite HTTP para hablar con el backend local (http://localhost:3000 con `adb reverse tcp:3000 tcp:3000`).
+    Se habilita cleartext de forma general solo en debug.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

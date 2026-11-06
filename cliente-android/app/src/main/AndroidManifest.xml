@@ -5,20 +5,39 @@
     <uses-permission android:name="android.permission.INTERNET" />
 
     <application
+        android:name=".NuclearApp"
         android:allowBackup="false"
         android:icon="@drawable/ponga_logo"
         android:label="@string/app_name"
+        android:networkSecurityConfig="@xml/network_security_config"
         android:supportsRtl="true"
         android:theme="@style/Theme.Nuclear">
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTop"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <!-- Los App Links https://HOST/s/TOKEN se añaden en el incremento 3 (B01/B02). -->
+
+            <!--
+                Android App Links (B01/B02): solo HTTPS, nunca esquemas propios.
+                autoVerify exige que https://HOST/.well-known/assetlinks.json (servido por el backend)
+                declare este paquete y la huella SHA-256 del certificado de firma. HOST es un PLACEHOLDER
+                (nuclear.example.com) hasta tener un host público HTTPS; se cambia con
+                -Pnuclear.appLinkHost=mi-host.com. Sin host real la verificación de dominio no es posible.
+            -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="https"
+                    android:host="${appLinkHost}"
+                    android:pathPrefix="/s/" />
+            </intent-filter>
         </activity>
     </application>
 </manifest>

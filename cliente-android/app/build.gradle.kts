@@ -2,7 +2,12 @@ plugins {
     alias(libs.plugins.android.application)
     // AGP 9 incluye soporte integrado de Kotlin: no se aplica org.jetbrains.kotlin.android.
     alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.kotlin.serialization)
 }
+
+// URL base del backend; se puede sobrescribir con -Pnuclear.backendUrl=...
+fun backendUrl(porDefecto: String): String =
+    providers.gradleProperty("nuclear.backendUrl").getOrElse(porDefecto)
 
 android {
     namespace = "co.edu.cue.nuclear.cliente"
@@ -14,11 +19,22 @@ android {
         targetSdk = 37
         versionCode = 1
         versionName = "0.1.0"
+
+        // Host HTTPS de los App Links (https://HOST/s/TOKEN). PLACEHOLDER hasta tener un host público:
+        // la verificación autoVerify solo funciona con un dominio real que sirva /.well-known/assetlinks.json.
+        manifestPlaceholders["appLinkHost"] =
+            providers.gradleProperty("nuclear.appLinkHost").getOrElse("nuclear.example.com")
     }
 
     buildTypes {
+        debug {
+            // Backend local vía `adb reverse tcp:3000 tcp:3000` (emulador o teléfono por USB).
+            // En el emulador probado, 10.0.2.2 no era alcanzable desde la app; sobrescribible con -Pnuclear.backendUrl=...
+            buildConfigField("String", "BACKEND_URL", "\"${backendUrl("http://localhost:3000/")}\"")
+        }
         release {
             isMinifyEnabled = false
+            buildConfigField("String", "BACKEND_URL", "\"${backendUrl("https://nuclear.example.com/")}\"")
         }
     }
 
@@ -29,6 +45,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
@@ -42,7 +59,14 @@ dependencies {
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.ui.tooling.preview)
+    implementation(libs.androidx.datastore.preferences)
+    implementation(libs.retrofit)
+    implementation(libs.retrofit.converter.kotlinx.serialization)
+    implementation(libs.kotlinx.serialization.json)
+    implementation(libs.kotlinx.coroutines.android)
     debugImplementation(libs.androidx.compose.ui.tooling)
 
     testImplementation(libs.junit)
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.okhttp.mockwebserver)
 }

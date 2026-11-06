@@ -1,30 +1,74 @@
 package co.edu.cue.nuclear.cliente.ui.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
+import co.edu.cue.nuclear.cliente.AppContainer
+import co.edu.cue.nuclear.cliente.data.sesion.MotivoRechazo
 import co.edu.cue.nuclear.cliente.ui.screens.PantallaProvisional
+import co.edu.cue.nuclear.cliente.ui.screens.acceso.AccesoEstado
+import co.edu.cue.nuclear.cliente.ui.screens.acceso.AccesoScreen
+import co.edu.cue.nuclear.cliente.ui.screens.acceso.AccesoViewModel
+import co.edu.cue.nuclear.cliente.ui.screens.acceso.QrInvalidoScreen
 
+/**
+ * @param token token del QR recibido por App Link (null si la app se abrió sin enlace).
+ */
 @Composable
-fun NuclearNavHost(modifier: Modifier = Modifier) {
+fun NuclearNavHost(
+    token: String?,
+    contenedor: AppContainer,
+    modifier: Modifier = Modifier,
+) {
     val navController = rememberNavController()
     NavHost(navController = navController, startDestination = Destinos.ACCESO, modifier = modifier) {
         composable(Destinos.ACCESO) {
-            PantallaProvisional("Acceso", "B01/B02: validacion del QR (incremento 3).")
+            val viewModel: AccesoViewModel = viewModel(key = "acceso-$token") {
+                AccesoViewModel(token, contenedor.sesiones, contenedor.dispositivos)
+            }
+            val estado by viewModel.estado.collectAsState()
+
+            LaunchedEffect(estado) {
+                val actual = estado
+                if (actual is AccesoEstado.Rechazado) {
+                    navController.navigate(Destinos.qrInvalido(actual.motivo)) {
+                        popUpTo(Destinos.ACCESO) { inclusive = true }
+                    }
+                }
+            }
+
+            AccesoScreen(
+                estado = estado,
+                onEntrar = {
+                    navController.navigate(Destinos.INICIO) { popUpTo(Destinos.ACCESO) { inclusive = true } }
+                },
+                onReintentar = viewModel::reintentar,
+            )
         }
-        composable(Destinos.QR_INVALIDO) {
-            PantallaProvisional("Acceso no disponible", "Estado de QR invalido (incremento 3).")
+        composable(
+            route = Destinos.QR_INVALIDO,
+            arguments = listOf(navArgument(Destinos.ARG_MOTIVO) { type = NavType.StringType }),
+        ) { entrada ->
+            val motivo = MotivoRechazo.desdeCodigo(entrada.arguments?.getString(Destinos.ARG_MOTIVO))
+                ?: MotivoRechazo.TOKEN_INVALIDO
+            QrInvalidoScreen(motivo)
         }
         composable(Destinos.INICIO) {
-            PantallaProvisional("¿Que quieres escuchar?", "Inicio y busqueda (incremento 4).")
+            PantallaProvisional("¿Qué quieres escuchar?", "Inicio y búsqueda (incremento 4).")
         }
         composable(Destinos.BUSCAR) {
-            PantallaProvisional("Busca una cancion", "B03/B04/B05/B16 (incremento 4).")
+            PantallaProvisional("Busca una canción", "B03/B04/B05/B16 (incremento 4).")
         }
         composable(Destinos.DETALLE) {
-            PantallaProvisional("Detalle de cancion", "B05: informacion y miniatura (incremento 4).")
+            PantallaProvisional("Detalle de canción", "B05: información y miniatura (incremento 4).")
         }
     }
 }
