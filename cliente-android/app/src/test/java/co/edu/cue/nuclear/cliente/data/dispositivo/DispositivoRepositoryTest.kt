@@ -76,4 +76,27 @@ class DispositivoRepositoryTest {
         assertTrue(a.length == 36 && b.length == 36)
         job.cancelAndJoin()
     }
+
+    @Test
+    fun marcarUnion_primeraVezEsNoRecurrente_yLasSiguientesSi() = runTest {
+        val job = Job()
+        val repo = DispositivoRepository(crearDataStore(File(carpeta.root, "e.preferences_pb"), job))
+
+        assertEquals(false, repo.marcarUnion())
+        assertEquals(true, repo.marcarUnion())
+        assertEquals(true, repo.marcarUnion())
+        job.cancelAndJoin()
+    }
+
+    @Test
+    fun marcarUnion_seConservaAlReabrirLaApp() = runTest {
+        val archivo = File(carpeta.root, "f.preferences_pb")
+        val job1 = Job()
+        assertEquals(false, DispositivoRepository(crearDataStore(archivo, job1)).marcarUnion())
+        job1.cancelAndJoin()
+
+        val job2 = Job()
+        assertEquals(true, DispositivoRepository(crearDataStore(archivo, job2)).marcarUnion())
+        job2.cancelAndJoin()
+    }
 }

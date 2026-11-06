@@ -6,6 +6,10 @@ import co.edu.cue.nuclear.cliente.data.busqueda.BusquedaRespuestaDto
 import co.edu.cue.nuclear.cliente.data.busqueda.CancionDto
 import co.edu.cue.nuclear.cliente.data.busqueda.SugerenciasRespuestaDto
 import co.edu.cue.nuclear.cliente.data.busqueda.TipoErrorBusqueda
+import co.edu.cue.nuclear.cliente.data.eventos.Evento
+import co.edu.cue.nuclear.cliente.data.eventos.RegistradorFalso
+import co.edu.cue.nuclear.cliente.data.sesion.SesionActiva
+import co.edu.cue.nuclear.cliente.data.sesion.SesionActivaStore
 import java.io.IOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -46,6 +50,8 @@ class BuscarViewModelTest {
     }
 
     private val api = ApiFalsa()
+    private val eventos = RegistradorFalso()
+    private val sesionActiva = SesionActivaStore().apply { actual = SesionActiva("SES-1", "dispositivo-uuid") }
     private lateinit var viewModel: BuscarViewModel
 
     private fun cancionDto(id: String) = CancionDto(id, "Título $id", "Canal", 200, "https://i.ytimg.com/$id.jpg")
@@ -58,7 +64,7 @@ class BuscarViewModelTest {
     @Before
     fun preparar() {
         Dispatchers.setMain(StandardTestDispatcher())
-        viewModel = BuscarViewModel(BusquedaRepository(api), debounceMs = 450)
+        viewModel = BuscarViewModel(BusquedaRepository(api), eventos, sesionActiva, debounceMs = 450)
     }
 
     @After
@@ -215,5 +221,71 @@ class BuscarViewModelTest {
         assertEquals(false, TipoErrorBusqueda.CUOTA.aMensaje().reintentable)
         assertEquals(false, TipoErrorBusqueda.SERVICIO_NO_DISPONIBLE.aMensaje().reintentable)
         assertEquals(false, TipoErrorBusqueda.CONSULTA_INVALIDA.aMensaje().reintentable)
+    }
+
+    @Test
+    fun busquedaExitosa_emiteBusquedaRealizadaConTerminoYCantidad() = runTest {
+        api.respuestaBusqueda = { Response.success(BusquedaRespuestaDto(listOf(cancionDto("a"), cancionDto("b")))) }
+        viewModel.onConsultaCambio("  Queen  ")
+        viewModel.buscar()
+        advanceUntilIdle()
+
+        assertEquals(
+            listOf<Evento>(Evento.BusquedaRealizada("SES-1", "dispositivo-uuid", "Queen", 2, desdeCache = false)),
+            eventos.eventos,
+        )
+    }
+
+    @Test
+    fun busquedaSinResultados_tambienSeRegistraConCantidadCero() = runTest {
+        viewModel.onConsultaCambio("zzqxjk")
+        viewModel.buscar()
+        advanceUntilIdle()
+
+        assertEquals(0, (eventos.eventos.single() as Evento.BusquedaRealizada).cantidadResultados)
+    }
+
+    @Test
+    fun busquedaRepetida_seRegistraComoDesdeCache() = runTest {
+        api.respuestaBusqueda = { Response.success(BusquedaRespuestaDto(listOf(cancionDto("a")))) }
+        viewModel.onConsultaCambio("Queen")
+        viewModel.buscar()
+        advanceUntilIdle()
+        viewModel.buscar()
+        advanceUntilIdle()
+
+        assertEquals(listOf(false, true), eventos.eventos.map { (it as Evento.BusquedaRealizada).desdeCache })
+        assertEquals(1, api.consultasBusqueda.size) // la segunda no llegó al servidor
+    }
+
+    @Test
+    fun busquedaConError_noSeRegistra() = runTest {
+        api.respuestaBusqueda = { errorHttp(503, "cuota_excedida") }
+        viewModel.onConsultaCambio("Queen")
+        viewModel.buscar()
+        advanceUntilIdle()
+
+        assertTrue(eventos.eventos.isEmpty())
+    }
+
+    @Test
+    fun elAutocompletado_noGeneraEventos() = runTest {
+        api.respuestaSugerencias = { Response.success(SugerenciasRespuestaDto(listOf("Shakira - Soltera"))) }
+        viewModel.onConsultaCambio("Shakira")
+        advanceUntilIdle()
+
+        assertTrue(eventos.eventos.isEmpty())
+    }
+
+    @Test
+    fun sinSesionActiva_noSeRegistraNada() = runTest {
+        sesionActiva.actual = null
+        api.respuestaBusqueda = { Response.success(BusquedaRespuestaDto(listOf(cancionDto("a")))) }
+        viewModel.onConsultaCambio("Queen")
+        viewModel.buscar()
+        advanceUntilIdle()
+
+        assertTrue(eventos.eventos.isEmpty())
+        assertTrue(viewModel.estado.value.resultados is ResultadosUi.Exito) // la búsqueda funciona igual
     }
 }

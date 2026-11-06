@@ -1,7 +1,7 @@
 'use strict';
 /**
  * Prueba REAL contra YouTube Data API v3 usando la clave de backend/.env (no usa mocks).
- * No forma parte de `npm test` (consume cuota: ~101 unidades por búsqueda). Ejecutar con:  npm run test:real
+ * No forma parte de `npm test` (consume cuota: 1 llamada de search.list (cupo propio de 100 al día) y 1 unidad de videos.list por búsqueda). Ejecutar con:  npm run test:real
  * Nunca imprime la clave. Se omite si YOUTUBE_API_KEY no está configurada.
  */
 require('dotenv').config({ path: require('node:path').join(__dirname, '..', '.env') });

@@ -7,6 +7,9 @@ import co.edu.cue.nuclear.cliente.data.busqueda.Cancion
 import co.edu.cue.nuclear.cliente.data.busqueda.ResultadoBusqueda
 import co.edu.cue.nuclear.cliente.data.busqueda.ResultadoSugerencias
 import co.edu.cue.nuclear.cliente.data.busqueda.TipoErrorBusqueda
+import co.edu.cue.nuclear.cliente.data.eventos.Evento
+import co.edu.cue.nuclear.cliente.data.eventos.RegistradorEventos
+import co.edu.cue.nuclear.cliente.data.sesion.SesionActivaStore
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -32,6 +35,8 @@ data class BuscarUiState(
 
 class BuscarViewModel(
     private val repositorio: BusquedaRepository,
+    private val eventos: RegistradorEventos,
+    private val sesionActiva: SesionActivaStore,
     private val debounceMs: Long = DEBOUNCE_MS,
 ) : ViewModel() {
 
@@ -73,9 +78,11 @@ class BuscarViewModel(
 
         trabajoBusqueda = viewModelScope.launch {
             val ui = when (val resultado = repositorio.buscar(consulta)) {
-                is ResultadoBusqueda.Exito ->
+                is ResultadoBusqueda.Exito -> {
+                    registrarBusqueda(consulta, resultado)
                     if (resultado.canciones.isEmpty()) ResultadosUi.SinResultados(consulta)
                     else ResultadosUi.Exito(resultado.canciones)
+                }
                 is ResultadoBusqueda.Error -> ResultadosUi.Error(resultado.tipo)
             }
             _estado.update { it.copy(resultados = ui) }
@@ -83,6 +90,20 @@ class BuscarViewModel(
     }
 
     fun reintentar() = buscar()
+
+    /** Evento `busqueda_realizada`: solo para búsquedas aceptadas y si hay una sesión activa. */
+    private fun registrarBusqueda(consulta: String, resultado: ResultadoBusqueda.Exito) {
+        val sesion = sesionActiva.actual ?: return
+        eventos.registrar(
+            Evento.BusquedaRealizada(
+                sesionId = sesion.idSesion,
+                dispositivoId = sesion.dispositivoId,
+                termino = consulta,
+                cantidadResultados = resultado.canciones.size,
+                desdeCache = resultado.desdeCache,
+            ),
+        )
+    }
 
     companion object {
         const val DEBOUNCE_MS = 450L

@@ -48,7 +48,8 @@ enum class TipoErrorBusqueda {
 }
 
 sealed interface ResultadoBusqueda {
-    data class Exito(val canciones: List<Cancion>) : ResultadoBusqueda
+    /** `desdeCache`: la respuesta salió de la caché de la app (no se consultó el servidor). */
+    data class Exito(val canciones: List<Cancion>, val desdeCache: Boolean = false) : ResultadoBusqueda
     data class Error(val tipo: TipoErrorBusqueda) : ResultadoBusqueda
 }
 

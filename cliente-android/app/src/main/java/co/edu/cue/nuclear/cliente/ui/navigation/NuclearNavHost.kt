@@ -35,7 +35,9 @@ fun NuclearNavHost(
     NavHost(navController = navController, startDestination = Destinos.ACCESO, modifier = modifier) {
         composable(Destinos.ACCESO) {
             val viewModel: AccesoViewModel = viewModel(key = "acceso-$token") {
-                AccesoViewModel(token, contenedor.sesiones, contenedor.dispositivos)
+                AccesoViewModel(
+                    token, contenedor.sesiones, contenedor.dispositivos, contenedor.eventos, contenedor.sesionActiva,
+                )
             }
             val estado by viewModel.estado.collectAsState()
 
@@ -68,7 +70,9 @@ fun NuclearNavHost(
             InicioScreen(onBuscar = { navController.navigate(Destinos.BUSCAR) })
         }
         composable(Destinos.BUSCAR) {
-            val viewModel: BuscarViewModel = viewModel { BuscarViewModel(contenedor.busqueda) }
+            val viewModel: BuscarViewModel = viewModel {
+                BuscarViewModel(contenedor.busqueda, contenedor.eventos, contenedor.sesionActiva)
+            }
             val estado by viewModel.estado.collectAsState()
             BuscarScreen(
                 estado = estado,

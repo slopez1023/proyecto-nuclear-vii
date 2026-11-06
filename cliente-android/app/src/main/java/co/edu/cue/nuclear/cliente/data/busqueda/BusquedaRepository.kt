@@ -10,8 +10,8 @@ import retrofit2.Response
 /**
  * Búsqueda y autocompletado a través del backend (B03, B04, B05, B16).
  *
- * Caché en memoria con vencimiento: la cuota de YouTube Data API es limitada (una búsqueda cuesta
- * 100 de las 10 000 unidades diarias), así que no se repite una consulta reciente. Los errores no se cachean.
+ * Caché en memoria con vencimiento: `search.list` tiene un cupo propio de 100 llamadas al día (1 unidad por
+ * llamada), así que no se repite una consulta reciente. Los errores no se cachean.
  */
 class BusquedaRepository(
     private val api: BusquedaApi,
@@ -27,7 +27,7 @@ class BusquedaRepository(
 
     suspend fun buscar(consulta: String): ResultadoBusqueda {
         val q = consulta.trim()
-        cacheBusquedas.vigente(q)?.let { return ResultadoBusqueda.Exito(it) }
+        cacheBusquedas.vigente(q)?.let { return ResultadoBusqueda.Exito(it, desdeCache = true) }
 
         return when (val r = llamar { api.buscar(q) }) {
             is Llamada.Fallo -> ResultadoBusqueda.Error(r.tipo)

@@ -80,10 +80,13 @@ class BusquedaRepositoryTest {
     fun buscar_repetida_usaCacheSinLlamarAlServidor() = runTest {
         responder(200, respuestaOk)
 
-        repositorio.buscar("Queen")
-        repositorio.buscar("  queen ") // misma consulta normalizada
+        val primera = repositorio.buscar("Queen") as ResultadoBusqueda.Exito
+        val segunda = repositorio.buscar("  queen ") as ResultadoBusqueda.Exito // misma consulta normalizada
 
         assertEquals(1, servidor.requestCount)
+        assertEquals(false, primera.desdeCache)
+        assertEquals(true, segunda.desdeCache)
+        assertEquals(primera.canciones, segunda.canciones)
     }
 
     @Test

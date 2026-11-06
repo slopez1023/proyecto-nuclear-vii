@@ -1,0 +1,27 @@
+{
+  "_aviso": "Contrato de eventos del Entregable 3. Lo usan las pruebas del backend (test/contrato-eventos.test.js) y las de Android (EventosRepositoryTest): ambos lados deben aceptar/producir exactamente estos cuerpos.",
+  "dispositivo_unido": {
+    "tipo": "dispositivo_unido",
+    "sesion_id": "SES-MOCK-001",
+    "dispositivo_id": "3f2b8c1e-9d4a-4e6b-8a1c-0b5d7e9f1a2b",
+    "datos": { "recurrente": false }
+  },
+  "dispositivo_unido_recurrente": {
+    "tipo": "dispositivo_unido",
+    "sesion_id": "SES-MOCK-001",
+    "dispositivo_id": "3f2b8c1e-9d4a-4e6b-8a1c-0b5d7e9f1a2b",
+    "datos": { "recurrente": true }
+  },
+  "busqueda_realizada": {
+    "tipo": "busqueda_realizada",
+    "sesion_id": "SES-MOCK-001",
+    "dispositivo_id": "3f2b8c1e-9d4a-4e6b-8a1c-0b5d7e9f1a2b",
+    "datos": { "termino": "Queen Bohemian Rhapsody", "cantidad_resultados": 10, "desde_cache": false }
+  },
+  "busqueda_realizada_desde_cache": {
+    "tipo": "busqueda_realizada",
+    "sesion_id": "SES-MOCK-001",
+    "dispositivo_id": "3f2b8c1e-9d4a-4e6b-8a1c-0b5d7e9f1a2b",
+    "datos": { "termino": "Queen Bohemian Rhapsody", "cantidad_resultados": 10, "desde_cache": true }
+  }
+}

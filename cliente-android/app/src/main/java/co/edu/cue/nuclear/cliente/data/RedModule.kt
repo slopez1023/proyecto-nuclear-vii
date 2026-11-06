@@ -1,6 +1,7 @@
 package co.edu.cue.nuclear.cliente.data
 
 import co.edu.cue.nuclear.cliente.data.busqueda.BusquedaApi
+import co.edu.cue.nuclear.cliente.data.eventos.EventosApi
 import co.edu.cue.nuclear.cliente.data.sesion.SesionApi
 import java.util.concurrent.TimeUnit
 import kotlinx.serialization.json.Json
@@ -27,3 +28,5 @@ fun crearRetrofit(baseUrl: String): Retrofit {
 fun crearSesionApi(baseUrl: String): SesionApi = crearRetrofit(baseUrl).create(SesionApi::class.java)
 
 fun crearBusquedaApi(baseUrl: String): BusquedaApi = crearRetrofit(baseUrl).create(BusquedaApi::class.java)
+
+fun crearEventosApi(baseUrl: String): EventosApi = crearRetrofit(baseUrl).create(EventosApi::class.java)

@@ -7,7 +7,7 @@ Resultados con **YouTube real → backend local → app Android en un TECNO KL8 
 | Historia | Estado | Qué se verificó |
 |---|---|---|
 | B03 Búsqueda | **Verificada en dispositivo físico (backend local)** | Búsqueda real, resultados con título, canal, duración y miniatura; sin resultados y error de conexión (emulador); datos listos en 0.57–1.14 s. |
-| B04 Autocompletado | **Verificada funcionalmente; riesgo de cuota abierto** | Sugerencias reales mientras se escribe. Cada consulta cuesta 100 unidades de cuota (ver abajo). |
+| B04 Autocompletado | **Verificada funcionalmente; riesgo de cuota abierto** | Sugerencias reales mientras se escribe. Cada consulta consume 1 de las 100 llamadas diarias de `search.list` (ver "Cuota de YouTube Data API"). |
 | B05 Información y miniaturas | **Verificada en dispositivo físico (backend local)** | Miniaturas reales en la lista y en el detalle, con título, canal, duración, disponibilidad e ID. |
 | B16 Integración YouTube | **Verificada en dispositivo físico (backend local)** | Datos reales de YouTube llegan por el backend y se ven en el teléfono; errores de cuota y clave inválida clasificados (pruebas reales y unitarias). |
 
@@ -90,9 +90,30 @@ Backend medido con `curl` (consultas nuevas, incluye dos llamadas a YouTube): 0.
 - **App (tiempo de datos listos):** 0.7–1.1 s, es decir **por debajo de 2 s** en estas pruebas.
 - **No medido:** el tiempo total percibido incluye pintar la lista y cargar las miniaturas; esto último no pudo medirse por el problema de TLS. Los volcados de pantalla de `uiautomator` tardan 4–6 s en este emulador, así que no sirven para medir la latencia; por eso se usó el cronómetro interno. Son pocas muestras en un emulador, con un backend local y la red de desarrollo: no es una prueba formal del criterio de 2 s.
 
-## Riesgo de cuota (decisión para el equipo)
+## Cuota de YouTube Data API (corregido)
 
-La API oficial cobra **100 unidades por cada `search.list`** y la cuota diaria por defecto es de 10 000, es decir, unas **100 búsquedas al día por clave**. El autocompletado usa también `search.list`, por lo que cada sugerencia consume una búsqueda. Mitigaciones implementadas: mínimo 3 caracteres, espera de 450 ms, caché de 5 minutos en backend y en la app. Aun así, un piloto con varios usuarios agotaría la cuota. Opciones a decidir con Juan Camilo: solicitar ampliación de cuota a Google, desactivar el autocompletado remoto, o usar una fuente de sugerencias distinta (el endpoint de sugerencias de Google no es oficial y no se usó).
+**Corrección:** el informe anterior usaba el cálculo antiguo ("100 unidades por `search.list` de 10 000 diarias"). La documentación oficial vigente (consultada el 2026-11-05) dice otra cosa:
+
+| Método | Costo | Cupo diario por defecto |
+|---|---|---|
+| `search.list` | **1 unidad por llamada** | **100 llamadas al día, en un cupo propio** (cupos granulares desde el 1 de junio de 2026) |
+| `videos.list` | 1 unidad | Comparte las **10 000 unidades diarias** con el resto de métodos |
+| `videos.insert` | 1 unidad | Cupo propio de 100 llamadas al día |
+| `videos.batchGetStats` (nuevo, 3 de junio de 2026) | 1 unidad | Cupo propio de 10 000 unidades al día |
+| `channels.list`, `playlists.list`, `videos.getRating` | 1 unidad | 10 000 unidades al día (cupo general) |
+| `videos.update/rate/delete`, `playlists`/`channels` `insert/update/delete` | 50 unidades | 10 000 unidades al día (cupo general) |
+| `captions.insert` / `captions.update` | 400 / 450 unidades | 10 000 unidades al día (cupo general) |
+
+- Toda petición, incluso inválida, cuesta al menos 1 unidad.
+- El cupo se reinicia a medianoche, hora del Pacífico.
+- Para más cupo hay que llenar el formulario *Quota Extension Request* (no se ha solicitado, por decisión del equipo).
+- El valor real del proyecto se consulta en Google Cloud Console; lo anterior son los valores por defecto de la documentación.
+
+**Qué significa para el proyecto:** cada búsqueda del backend hace 1 `search.list` (cupo de 100 al día) y 1 `videos.list` (1 unidad del cupo de 10 000). El autocompletado hace exactamente lo mismo. El límite que importa es el de **100 llamadas `search.list` al día por proyecto**; el cupo de 10 000 unidades no corre riesgo. En la práctica el techo sigue siendo de unas 100 búsquedas o sugerencias al día, pero el cálculo en unidades del informe anterior era incorrecto. Las pruebas de desarrollo (reales, en emulador y en el teléfono) gastan del mismo cupo.
+
+**Decisión del equipo (2026-11-05):** se mantiene el autocompletado remoto de YouTube para el Entregable 3 con las medidas actuales: mínimo 3 caracteres, espera de 450 ms, caché de 5 minutos en backend y app, y sin solicitudes duplicadas. No se solicita cuota adicional ni se cambia la estrategia de búsqueda sin consultar. El riesgo sigue abierto: un piloto con varios usuarios agotaría las 100 llamadas diarias.
+
+Fuentes: [Cálculo de cuota](https://developers.google.com/youtube/v3/determine_quota_cost), [Primeros pasos: uso de cuota](https://developers.google.com/youtube/v3/getting-started), [Historial de revisiones](https://developers.google.com/youtube/v3/revision_history) (entradas del 1 y 3 de junio de 2026).
 
 ## Qué se hizo
 
