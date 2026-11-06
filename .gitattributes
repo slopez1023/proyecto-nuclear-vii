@@ -1,0 +1,7 @@
+* text=auto
+# El wrapper de Gradle debe conservar finales de línea LF para ejecutarse en Linux (GitHub Actions)
+gradlew text eol=lf
+*.bat text eol=crlf
+*.jar binary
+*.png binary
+*.ttf binary

@@ -95,7 +95,7 @@ function crearApp({ sesiones, youtube, almacenEventos, config = {} }) {
       relation: ['delegate_permission/common.handle_all_urls'],
       target: {
         namespace: 'android_app',
-        package_name: config.androidPackage || 'co.edu.uniempresarial.nuclear.cliente',
+        package_name: config.androidPackage || 'co.edu.cue.nuclear.cliente',
         sha256_cert_fingerprints: huellas,
       },
     }]);
