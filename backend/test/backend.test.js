@@ -7,7 +7,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { crearApp } = require('../src/app');
 const { cargarSesiones, validarToken } = require('../src/sesiones');
-const { parseDuracionIso, mapearCanciones, crearClienteYoutube, YoutubeError } = require('../src/youtube');
+const { parseDuracionIso, mapearCanciones, crearClienteYoutube, clasificarError, YoutubeError } = require('../src/youtube');
 const { validarEvento } = require('../src/eventos');
 
 const UUID = '3f2b8c1e-9d4a-4e6b-8a1c-0b5d7e9f1a2b';
@@ -80,6 +80,22 @@ test('cliente youtube: cuota excedida y fallo de red', async () => {
   await assert.rejects(cuota.buscar('x'), (e) => e.codigo === 'cuota_excedida');
   const red = crearClienteYoutube({ apiKey: 'K', fetchImpl: async () => { throw new Error('boom'); } });
   await assert.rejects(red.buscar('x'), (e) => e.codigo === 'youtube_no_disponible');
+});
+
+test('clasificarError: cuota, clave inválida, sin autorización y genérico', () => {
+  const e = (errors, details) => ({ error: { errors: errors.map((reason) => ({ reason })), details: (details || []).map((reason) => ({ reason })) } });
+  assert.equal(clasificarError(403, e(['quotaExceeded'])).codigo, 'cuota_excedida');
+  assert.equal(clasificarError(403, e(['dailyLimitExceeded'])).status, 503);
+  // forma real que devuelve YouTube con una clave inválida: 400 badRequest + details API_KEY_INVALID
+  assert.equal(clasificarError(400, e(['badRequest'], ['API_KEY_INVALID'])).codigo, 'api_key_invalida');
+  assert.equal(clasificarError(403, e(['accessNotConfigured'])).codigo, 'youtube_no_autorizado');
+  assert.equal(clasificarError(500, {}).codigo, 'youtube_error');
+  assert.equal(clasificarError(502, undefined).codigo, 'youtube_error');
+});
+
+test('errores de YouTube no filtran la API key en el mensaje', async () => {
+  const yt = crearClienteYoutube({ apiKey: 'SECRETO-123', fetchImpl: fetchMock(() => ({ ok: false, status: 400, body: { error: { details: [{ reason: 'API_KEY_INVALID' }] } } })) });
+  await assert.rejects(yt.buscar('x'), (err) => !JSON.stringify([err.message, err.codigo]).includes('SECRETO-123'));
 });
 
 // --- eventos ---

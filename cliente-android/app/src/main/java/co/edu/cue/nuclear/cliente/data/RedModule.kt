@@ -1,5 +1,6 @@
 package co.edu.cue.nuclear.cliente.data
 
+import co.edu.cue.nuclear.cliente.data.busqueda.BusquedaApi
 import co.edu.cue.nuclear.cliente.data.sesion.SesionApi
 import java.util.concurrent.TimeUnit
 import kotlinx.serialization.json.Json
@@ -14,7 +15,7 @@ private val JSON = Json { ignoreUnknownKeys = true }
 fun crearRetrofit(baseUrl: String): Retrofit {
     val cliente = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(10, TimeUnit.SECONDS)
+        .readTimeout(15, TimeUnit.SECONDS) // la búsqueda encadena dos llamadas a YouTube en el backend
         .build()
     return Retrofit.Builder()
         .baseUrl(baseUrl)
@@ -24,3 +25,5 @@ fun crearRetrofit(baseUrl: String): Retrofit {
 }
 
 fun crearSesionApi(baseUrl: String): SesionApi = crearRetrofit(baseUrl).create(SesionApi::class.java)
+
+fun crearBusquedaApi(baseUrl: String): BusquedaApi = crearRetrofit(baseUrl).create(BusquedaApi::class.java)

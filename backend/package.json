@@ -8,6 +8,7 @@
   "scripts": {
     "start": "node src/server.js",
     "test": "node --test test/",
+    "test:real": "node --test test-real/youtube.real.js",
     "qr": "node scripts/generar-qr.js"
   },
   "dependencies": {

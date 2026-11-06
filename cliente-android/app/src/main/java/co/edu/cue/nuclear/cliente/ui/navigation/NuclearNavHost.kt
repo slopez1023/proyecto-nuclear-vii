@@ -13,11 +13,14 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import co.edu.cue.nuclear.cliente.AppContainer
 import co.edu.cue.nuclear.cliente.data.sesion.MotivoRechazo
-import co.edu.cue.nuclear.cliente.ui.screens.PantallaProvisional
 import co.edu.cue.nuclear.cliente.ui.screens.acceso.AccesoEstado
 import co.edu.cue.nuclear.cliente.ui.screens.acceso.AccesoScreen
 import co.edu.cue.nuclear.cliente.ui.screens.acceso.AccesoViewModel
 import co.edu.cue.nuclear.cliente.ui.screens.acceso.QrInvalidoScreen
+import co.edu.cue.nuclear.cliente.ui.screens.buscar.BuscarScreen
+import co.edu.cue.nuclear.cliente.ui.screens.buscar.BuscarViewModel
+import co.edu.cue.nuclear.cliente.ui.screens.detalle.DetalleScreen
+import co.edu.cue.nuclear.cliente.ui.screens.inicio.InicioScreen
 
 /**
  * @param token token del QR recibido por App Link (null si la app se abrió sin enlace).
@@ -62,13 +65,26 @@ fun NuclearNavHost(
             QrInvalidoScreen(motivo)
         }
         composable(Destinos.INICIO) {
-            PantallaProvisional("¿Qué quieres escuchar?", "Inicio y búsqueda (incremento 4).")
+            InicioScreen(onBuscar = { navController.navigate(Destinos.BUSCAR) })
         }
         composable(Destinos.BUSCAR) {
-            PantallaProvisional("Busca una canción", "B03/B04/B05/B16 (incremento 4).")
+            val viewModel: BuscarViewModel = viewModel { BuscarViewModel(contenedor.busqueda) }
+            val estado by viewModel.estado.collectAsState()
+            BuscarScreen(
+                estado = estado,
+                onConsultaCambio = viewModel::onConsultaCambio,
+                onBuscar = viewModel::buscar,
+                onSugerencia = viewModel::elegirSugerencia,
+                onReintentar = viewModel::reintentar,
+                onCancion = { navController.navigate(Destinos.detalle(it.youtubeVideoId)) },
+            )
         }
-        composable(Destinos.DETALLE) {
-            PantallaProvisional("Detalle de canción", "B05: información y miniatura (incremento 4).")
+        composable(
+            route = Destinos.DETALLE,
+            arguments = listOf(navArgument(Destinos.ARG_VIDEO_ID) { type = NavType.StringType }),
+        ) { entrada ->
+            val id = entrada.arguments?.getString(Destinos.ARG_VIDEO_ID)
+            DetalleScreen(cancion = id?.let(contenedor.busqueda::cancionPorId))
         }
     }
 }

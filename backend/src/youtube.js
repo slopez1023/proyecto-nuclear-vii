@@ -14,6 +14,34 @@ class YoutubeError extends Error {
   }
 }
 
+const RAZONES_CUOTA = new Set(['quotaExceeded', 'dailyLimitExceeded', 'rateLimitExceeded', 'userRateLimitExceeded']);
+const RAZONES_CLAVE_INVALIDA = new Set(['API_KEY_INVALID', 'keyInvalid']);
+const RAZONES_SIN_AUTORIZACION = new Set([
+  'accessNotConfigured', 'forbidden', 'ipRefererBlocked', 'API_KEY_SERVICE_BLOCKED', 'API_KEY_HTTP_REFERRER_BLOCKED',
+]);
+
+/**
+ * Traduce el error de YouTube a un YoutubeError con código estable. Los mensajes son genéricos:
+ * nunca incluyen la URL de la petición ni la clave.
+ */
+function clasificarError(status, cuerpo) {
+  const error = (cuerpo && cuerpo.error) || {};
+  const razones = [
+    ...(error.errors || []).map((e) => e.reason),
+    ...(error.details || []).map((d) => d.reason),
+  ].filter(Boolean);
+  const tiene = (conjunto) => razones.some((r) => conjunto.has(r));
+
+  if (tiene(RAZONES_CUOTA)) return new YoutubeError('cuota_excedida', 'Se agotó la cuota diaria de YouTube.', 503);
+  if (tiene(RAZONES_CLAVE_INVALIDA)) {
+    return new YoutubeError('api_key_invalida', 'La clave de YouTube configurada en el backend no es válida.', 503);
+  }
+  if (tiene(RAZONES_SIN_AUTORIZACION)) {
+    return new YoutubeError('youtube_no_autorizado', 'La clave de YouTube no tiene permiso para usar la API.', 503);
+  }
+  return new YoutubeError('youtube_error', `YouTube respondió ${status}.`);
+}
+
 /** Convierte duración ISO-8601 de YouTube (PT1H2M3S) a segundos. Devuelve null si no es válida. */
 function parseDuracionIso(iso) {
   if (typeof iso !== 'string') return null;
@@ -64,9 +92,7 @@ function crearClienteYoutube({ apiKey, fetchImpl = globalThis.fetch, ttlMs = 5 *
     }
     if (!resp.ok) {
       const cuerpo = await resp.json().catch(() => ({}));
-      const razon = cuerpo.error && cuerpo.error.errors && cuerpo.error.errors[0] && cuerpo.error.errors[0].reason;
-      if (razon === 'quotaExceeded') throw new YoutubeError('cuota_excedida', 'Se agotó la cuota diaria de YouTube.', 503);
-      throw new YoutubeError('youtube_error', `YouTube respondió ${resp.status}.`);
+      throw clasificarError(resp.status, cuerpo);
     }
     return resp.json();
   }
@@ -94,4 +120,4 @@ function crearClienteYoutube({ apiKey, fetchImpl = globalThis.fetch, ttlMs = 5 *
   return { buscar };
 }
 
-module.exports = { YoutubeError, parseDuracionIso, mapearCanciones, crearClienteYoutube };
+module.exports = { YoutubeError, clasificarError, parseDuracionIso, mapearCanciones, crearClienteYoutube };
