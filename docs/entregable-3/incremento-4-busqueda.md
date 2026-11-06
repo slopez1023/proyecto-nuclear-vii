@@ -4,14 +4,52 @@
 
 | Historia | Estado | Verificado | Falta |
 |---|---|---|---|
-| B16 Integración con YouTube | **Parcial (backend verificado)** | Pruebas reales contra YouTube Data API v3 con la clave de `backend/.env`: llegan `youtube_video_id`, título, canal, duración y miniatura, y el backend los entrega por `/api/busqueda`. Clave inválida real se clasifica como `api_key_invalida`. | No se vio el resultado real en la app Android (ver "Bloqueo"). La validación de disponibilidad y la reproducción son de entregables posteriores. |
-| B03 Búsqueda de canciones | **Parcial** | Android → `GET /api/busqueda` implementado; estados de carga, vacío y error; 14 pruebas del repositorio con servidor simulado y 13 del ViewModel. Backend verificado con YouTube real. | Falta la prueba de extremo a extremo en dispositivo/emulador y la medición de <2 s. |
-| B04 Autocompletado | **Parcial** | Espera 450 ms tras la última tecla, solo con 3+ caracteres, descarta respuestas viejas; probado con tiempo virtual. Backend devuelve sugerencias reales. | Misma prueba pendiente en dispositivo. Ver riesgo de cuota abajo. |
-| B05 Información y miniaturas | **Parcial** | Resultados y detalle muestran título, canal, duración, miniatura (Coil) y el ID de YouTube (en el detalle). | No se vieron miniaturas reales renderizadas en pantalla. |
+| B16 Integración con YouTube | **Parcial** | Pruebas reales con la clave de `backend/.env` (3/3). Resultados reales de YouTube (título, canal, duración, ID) llegan por el backend y se ven en la app Android en el emulador. | Ver miniaturas cargadas. Validación de disponibilidad y reproducción son de entregables posteriores. |
+| B03 Búsqueda | **Parcial** | Búsqueda real en el emulador; estados sin resultados y sin conexión con "Reintentar"; tiempo medido (abajo). | Medición en teléfono real y con red real. |
+| B04 Autocompletado | **Parcial** | Sugerencias reales aparecen mientras se escribe (`inc4-02`). | Decidir qué hacer con la cuota. |
+| B05 Información y miniaturas | **Parcial** | Título, canal, duración y detalle verificados en pantalla. | **Miniaturas no cargaron** (ver abajo). |
 
-## Bloqueo: disco lleno, sin prueba en emulador
+## Validación en emulador (Pixel_10_ProyectoNuclear, API 37)
 
-Al intentar la prueba de extremo a extremo, el disco `C:` estaba al 100 %. Arrancar el emulador `Pixel_10_ProyectoNuclear` escribe unos 3.2 GB en `~/.android/avd/Pixel_10_ProyectoNuclear.avd/userdata-qemu.img.qcow2`, lo que agotó el espacio. Lo detuve a tiempo y no borré nada del AVD. Con más de 8 GB libres se puede ejecutar la prueba (pasos abajo). El archivo de usuario del AVD podría haber quedado inconsistente por el corte; si el emulador no arranca, usar *Cold Boot* o *Wipe Data* desde Android Studio.
+El emulador arrancó con Cold Boot sin problemas y sin consumir espacio (disco con ~15 GB libres). No se usó Wipe Data ni se tocó el AVD. Backend local con la clave real y `adb reverse tcp:3000 tcp:3000`.
+
+| Prueba | Resultado | Evidencia |
+|---|---|---|
+| Acceso por App Link, Entrar, Inicio, Buscar | Correcto | — |
+| Autocompletado con "Shakira" | 5 sugerencias reales | `inc4-02-autocompletado.png` |
+| Búsqueda "Shakira" | Resultados reales: título, canal · duración | `inc4-03-resultados-reales-miniatura-pendiente.png` |
+| Detalle de "She Wolf" | Título, canal, duración, "Disponible", ID `Fno-Akxow_c` | `inc4-04-detalle.png` |
+| Búsqueda sin resultados | Mensaje con la consulta | `inc4-05-sin-resultados.png` |
+| Backend caído | "Sin conexión" con Reintentar | `inc4-06-error-conexion.png` |
+| **Miniaturas** | **No cargan: recuadro gris** | `inc4-03`, `inc4-04` |
+
+### Por qué no cargan las miniaturas
+
+Desde el emulador, **todo HTTPS** a Internet falla: logcat muestra `SSLHandshakeException: Trust anchor for certification path not found` (incluso para `https://www.google.com/generate_204`, la prueba de conectividad del propio Android). Es el escaneo HTTPS del antivirus del equipo (Avast) que reemplaza los certificados con uno propio que Android no conoce. El backend en Node sí funciona porque confía en el certificado de Avast mediante `NODE_EXTRA_CA_CERTS`. No es un fallo de la app: la URL de la miniatura llega correcta (`https://i.ytimg.com/...`), pero la descarga de imágenes falla en este entorno. Por eso **B05 y B16 no se marcan completas**.
+
+Opciones para resolverlo (decisión del equipo):
+1. Desactivar temporalmente el escaneo HTTPS de Avast mientras se prueba.
+2. Probar en un teléfono físico con otra red.
+3. Añadir, solo en el build debug, el certificado raíz de Avast como ancla de confianza (modifica la configuración de seguridad de la app de desarrollo).
+
+## Tiempos de respuesta
+
+Medidos con un cronómetro temporal en `BuscarViewModel` (desde que se pulsa buscar hasta que el estado de resultados está listo; **ya revertido**, no está en el commit):
+
+| Consulta (nueva) | Tiempo en la app |
+|---|---|
+| Feid Normal (primera, conexión en frío) | 676 ms |
+| Maluma Felices los 4 | 1112 ms |
+| Rosalia Despecha | 709 ms |
+| Bad Bunny Titi | 694 ms |
+| Karol G Provenza (ya en caché del backend) | 49 ms |
+| Feid Normal repetida (caché de la app) | 0 ms |
+
+Backend medido con `curl` (consultas nuevas, incluye dos llamadas a YouTube): 0.78–0.85 s; con caché: 0.04 s. Sugerencias: 0.68–0.81 s.
+
+- **Backend:** ~0.8 s por búsqueda nueva.
+- **App (tiempo de datos listos):** 0.7–1.1 s, es decir **por debajo de 2 s** en estas pruebas.
+- **No medido:** el tiempo total percibido incluye pintar la lista y cargar las miniaturas; esto último no pudo medirse por el problema de TLS. Los volcados de pantalla de `uiautomator` tardan 4–6 s en este emulador, así que no sirven para medir la latencia; por eso se usó el cronómetro interno. Son pocas muestras en un emulador, con un backend local y la red de desarrollo: no es una prueba formal del criterio de 2 s.
 
 ## Riesgo de cuota (decisión para el equipo)
 
@@ -41,13 +79,12 @@ Búsqueda real realizada por el backend local: "Bohemian Rhapsody Queen" → 10 
 - `backend/.env.example` no tiene valor.
 - Los mensajes de error no incluyen la clave (hay una prueba para eso).
 
-## Cómo completar la prueba de extremo a extremo
+## Cómo repetir la prueba
 
 ```bash
-# 1) Liberar espacio en C: (al menos 8 GB) y abrir el emulador
 cd backend && npm start
 adb reverse tcp:3000 tcp:3000
 cd ../cliente-android && ./gradlew installDebug
 adb shell am start -a android.intent.action.VIEW -d "https://nuclear.example.com/s/demo-activa-001" co.edu.cue.nuclear.cliente
-# Entrar → Buscar una canción → escribir "Queen" (aparecen sugerencias) → buscar → tocar un resultado
+# Entrar → Buscar una canción → escribir "Shakira" (sugerencias) → Enter → tocar un resultado
 ```
