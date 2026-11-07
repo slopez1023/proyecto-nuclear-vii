@@ -143,6 +143,45 @@ class BuscarViewModelTest {
     }
 
     @Test
+    fun limpiarLaConsulta_descartaLosResultadosAnteriores() = runTest {
+        api.respuestaBusqueda = { Response.success(BusquedaRespuestaDto(listOf(cancionDto("a")))) }
+        viewModel.onConsultaCambio("Queen")
+        viewModel.buscar()
+        advanceUntilIdle()
+        assertTrue(viewModel.estado.value.resultados is ResultadosUi.Exito)
+
+        viewModel.onConsultaCambio("")
+
+        assertEquals(BuscarUiState(), viewModel.estado.value)
+    }
+
+    @Test
+    fun limpiarLaConsulta_conBusquedaEnCurso_noDejaQueReaparezcaElResultado() = runTest {
+        api.respuestaBusqueda = { Response.success(BusquedaRespuestaDto(listOf(cancionDto("a")))) }
+        viewModel.onConsultaCambio("Queen")
+        viewModel.buscar()
+        assertEquals(ResultadosUi.Cargando, viewModel.estado.value.resultados)
+
+        viewModel.onConsultaCambio("")
+        advanceUntilIdle()
+
+        assertEquals(ResultadosUi.Inicial, viewModel.estado.value.resultados)
+        assertEquals("", viewModel.estado.value.consulta)
+    }
+
+    @Test
+    fun editarLaConsulta_sinVaciarla_conservaLosResultados() = runTest {
+        api.respuestaBusqueda = { Response.success(BusquedaRespuestaDto(listOf(cancionDto("a")))) }
+        viewModel.onConsultaCambio("Queen")
+        viewModel.buscar()
+        advanceUntilIdle()
+
+        viewModel.onConsultaCambio("Quee")
+
+        assertTrue(viewModel.estado.value.resultados is ResultadosUi.Exito)
+    }
+
+    @Test
     fun buscar_sinResultados() = runTest {
         viewModel.onConsultaCambio("zzqxjk")
         viewModel.buscar()
