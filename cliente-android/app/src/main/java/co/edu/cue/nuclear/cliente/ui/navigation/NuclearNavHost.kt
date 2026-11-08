@@ -21,6 +21,17 @@ import co.edu.cue.nuclear.cliente.ui.screens.buscar.BuscarScreen
 import co.edu.cue.nuclear.cliente.ui.screens.buscar.BuscarViewModel
 import co.edu.cue.nuclear.cliente.ui.screens.detalle.DetalleScreen
 import co.edu.cue.nuclear.cliente.ui.screens.inicio.InicioScreen
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
+import co.edu.cue.nuclear.cliente.ui.theme.NuclearMotion
+import co.edu.cue.nuclear.cliente.ui.theme.animacionesActivas
 
 /**
  * @param token token del QR recibido por App Link (null si la app se abrió sin enlace).
@@ -32,7 +43,40 @@ fun NuclearNavHost(
     modifier: Modifier = Modifier,
 ) {
     val navController = rememberNavController()
-    NavHost(navController = navController, startDestination = Destinos.ACCESO, modifier = modifier) {
+    val contexto = LocalContext.current
+    val desplazamiento = with(LocalDensity.current) { NuclearMotion.DESPLAZAMIENTO_NAVEGACION.roundToPx() }
+    val duracionEntrada = tween<Float>(NuclearMotion.ENTRADA_MS, easing = NuclearMotion.Entrada)
+    val duracionSalida = tween<Float>(NuclearMotion.SALIDA_MS, easing = NuclearMotion.Salida)
+    val desplazar = tween<IntOffset>(NuclearMotion.ENTRADA_MS, easing = NuclearMotion.Entrada)
+    // Transiciones solo visuales (ni rutas ni pila de navegación cambian). Sin animaciones del sistema: instantáneas.
+    NavHost(
+        navController = navController,
+        startDestination = Destinos.ACCESO,
+        modifier = modifier,
+        enterTransition = {
+            when {
+                !animacionesActivas(contexto) -> EnterTransition.None
+                // De Acceso a Inicio o QR inválido: solo fundido, sin desplazamiento.
+                initialState.destination.route == Destinos.ACCESO -> fadeIn(duracionEntrada)
+                else -> fadeIn(duracionEntrada) +
+                    slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.Start, desplazar) { desplazamiento }
+            }
+        },
+        exitTransition = {
+            if (animacionesActivas(contexto)) fadeOut(duracionSalida) else ExitTransition.None
+        },
+        popEnterTransition = {
+            if (animacionesActivas(contexto)) {
+                fadeIn(duracionEntrada) +
+                    slideIntoContainer(AnimatedContentTransitionScope.SlideDirection.End, desplazar) { desplazamiento }
+            } else {
+                EnterTransition.None
+            }
+        },
+        popExitTransition = {
+            if (animacionesActivas(contexto)) fadeOut(duracionSalida) else ExitTransition.None
+        },
+    ) {
         composable(Destinos.ACCESO) {
             val viewModel: AccesoViewModel = viewModel(key = "acceso-$token") {
                 AccesoViewModel(

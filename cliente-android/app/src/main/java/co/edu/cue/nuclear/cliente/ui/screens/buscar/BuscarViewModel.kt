@@ -48,7 +48,17 @@ class BuscarViewModel(
 
     /** Autocompletado (B04): espera a que el usuario deje de escribir y solo consulta con 3+ caracteres. */
     fun onConsultaCambio(texto: String) {
-        _estado.update { it.copy(consulta = texto, sugerencias = emptyList()) }
+        // Consulta vacía (p. ej. el botón ✕): se descartan también los resultados anteriores y se cancela
+        // una búsqueda en curso, para que su respuesta no reaparezca sobre el estado inicial.
+        val vacia = texto.isBlank()
+        if (vacia) trabajoBusqueda?.cancel()
+        _estado.update {
+            it.copy(
+                consulta = texto,
+                sugerencias = emptyList(),
+                resultados = if (vacia) ResultadosUi.Inicial else it.resultados,
+            )
+        }
         trabajoSugerencias?.cancel()
         if (texto.trim().length < MIN_SUGERENCIA) return
 
