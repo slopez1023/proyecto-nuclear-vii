@@ -130,3 +130,95 @@
 
 ### Orden de integración cuando lleguen los contratos
 1. Recibir y revisar C1 a C18 y los fixtures. 2. `ColaApi` + DTO + mapeadores. 3. `ColaRepositoryReal` y sus pruebas con MockWebServer y los fixtures. 4. `crearColaRepository` (release y, si se desea, debug con propiedad). 5. UUID (C10). 6. Tabla de errores y `TipoErrorCola`. 7. Decidir la persistencia de la sesión. 8. `ColaEnVivo` y SSE (paso 4B). 9. Regresión en el TECNO contra el backend real.
+
+## Fase 1 — Integración HTTP real (2026-11-09)
+
+### Qué se cambió
+| # | Cambio | Archivo |
+|---|---|---|
+| 36 | `ColaApi` (Retrofit) con los 3 endpoints HTTP confirmados; rutas con `id_sesion` | `KT/data/cola/ColaApi.kt` *(nuevo)* |
+| 37 | DTO del contrato (cola, solicitud, canción, reproducción, votos, elegibilidad, errores) | `KT/data/cola/ColaDtos.kt` *(nuevo)* |
+| 38 | Mapeadores DTO → modelos; `201`/`200`, `voto.origen`, estados y fechas | `KT/data/cola/ColaMapeadores.kt` *(nuevo)* |
+| 39 | `ColaRepositoryReal`: cola, solicitar y votar; tabla de errores; `SIN_CONFIRMAR`; sin sesión no llama a la red | `KT/data/cola/ColaRepositoryReal.kt` *(nuevo)* |
+| 40 | `InterceptorDispositivo`: cabecera `X-Dispositivo-Id` solo en `/cola`, `/cola/flujo` y `/solicitudes…` | `KT/data/InterceptorDispositivo.kt` *(nuevo)*, `KT/data/RedModule.kt` |
+| 41 | `AppContainer` crea `sesionActiva` antes que `retrofit` y se la pasa a `crearRetrofit` | `KT/NuclearApp.kt` |
+| 42 | **Release** usa siempre `ColaRepositoryReal`. **Debug** usa el simulado salvo `-Pnuclear.colaReal=true` (`BuildConfig.COLA_REAL`) | `src/release/…/ColaModulo.kt`, `src/debug/…/ColaModulo.kt`, `app/build.gradle.kts` |
+| 43 | `EstadoCola` con versión, `generado_en`, reglas y `mi_votacion`; `SolicitudCola.yaVoto` en lugar de `miVoto` | `KT/data/cola/Cola.kt` |
+| 44 | `ColaViewModel` descarta estados con versión menor o igual y, tras un `SIN_CONFIRMAR`, **consulta la cola en lugar de repetir** la operación | `KT/ui/screens/cola/ColaViewModel.kt` |
+| 45 | Botón de voto: `Votado`/`TuSolicitud`/`Espera`; `ColaScreen` pasa `mi_votacion.puede_votar` como ayuda visual; mensajes de los nuevos errores | `KT/ui/components/{Votos,ElementoCola,MensajeOperacion}.kt`, `KT/ui/screens/cola/ColaScreen.kt`, `KT/ui/screens/detalle/TarjetaEstadoEnCola.kt` |
+| 46 | El repositorio falso (solo debug) lleva versión simulada creciente y devuelve `origenVoto`; usa `yaVoto` | `src/debug/…/ColaRepositoryFalso.kt`, `DatosSimulados.kt` |
+
+### Cómo se elige el repositorio
+| Variante | Cola |
+|---|---|
+| release | `ColaRepositoryReal` contra `BuildConfig.BACKEND_URL` |
+| debug (por defecto) | `ColaRepositoryDepurable` (simulado) |
+| debug con `./gradlew installDebug -Pnuclear.colaReal=true` | `ColaRepositoryReal` contra `BACKEND_URL` (por defecto `http://localhost:3000/`, con `adb reverse tcp:3000 tcp:3000`) |
+
+### Sigue pendiente *(estado de la Fase 1; el punto 1 se hizo en la Fase 2, el 2 también, y el 3 en la Fase 3, sin segundo teléfono)*
+1. **Cliente SSE** (`ColaEnVivo`, `okhttp-sse:4.12.0` autorizada, cliente sin límite de lectura de 15 s, abierto solo en primer plano). **No implementado.**
+2. **Persistir la sesión** (idSesion, idEstablecimiento) en DataStore y validarla antes de darla por vigente. **No implementado:** hoy, tras la muerte del proceso, el repositorio real devuelve `SESION_NO_DISPONIBLE` y la pantalla muestra "Sesión no disponible" sin llevar sola al acceso.
+3. Validar contra el backend con PostgreSQL (`npm run db:up`, `backend/.env`, `CATALOGO_SEMILLA=true`).
+4. Si la sesión se cierra, la cola ya cargada se conserva en pantalla (solo se avisa en la siguiente acción).
+5. **Riesgo:** OkHttp puede reintentar en silencio un POST ante una conexión caída reutilizada (comportamiento por defecto); no se desactivó para no perjudicar los GET. Si en pruebas reales aparece un `voto_duplicado` sin acción previa, revisar `retryOnConnectionFailure`.
+
+## Fase 2 — SSE, persistencia de sesión (2026-11-10)
+
+### Qué se cambió
+| # | Cambio | Archivo |
+|---|---|---|
+| 47 | `ColaEnVivo` + `EventoFlujo`: contrato interno del tiempo real | `KT/data/cola/ColaEnVivo.kt` *(nuevo)* |
+| 48 | `LectorSse`: lee líneas `text/event-stream` (ping, `retry`, `data` múltiple) sin red | `KT/data/cola/LectorSse.kt` *(nuevo)* |
+| 49 | `ColaEnVivoSse`: cliente SSE con **su propio `OkHttpClient`** (lectura 30 s, sin interceptores), cabeceras, errores previos, reconexión con el `retry` del servidor, cancelación que cierra el socket | `KT/data/cola/ColaEnVivoSse.kt` *(nuevo)* |
+| 50 | `ColaViewModel` recibe `ColaEnVivo?`: `alPrimerPlano()` / `alSegundoPlano()` (un solo flujo), regla de versiones compartida entre GET y SSE, `conexionEnVivo`, `sesionNoDisponible` | `KT/ui/screens/cola/ColaViewModel.kt` |
+| 51 | `SesionLocal` (DataStore, mismo archivo del UUID): `id_sesion` e `id_establecimiento` | `KT/data/sesion/SesionLocal.kt` *(nuevo)* |
+| 52 | `RestauradorSesion`: recupera la sesión y la **valida con el servidor**; sin confirmación no la da por vigente | `KT/data/sesion/RestauradorSesion.kt` *(nuevo)* |
+| 53 | `conSesion`/`PuertaSesion`: las pantallas con sesión no se muestran hasta confirmarla; si no, vuelven a Acceso | `KT/ui/navigation/ConSesion.kt` *(nuevo)*, `NuclearNavHost.kt` |
+| 54 | `NuclearNavHost`: flujo activo solo con la app en primer plano (`Lifecycle` ≥ STARTED), sesión confirmada y ruta con sesión; `DisposableEffect` lo cierra al salir; sesión no disponible → limpiar y volver a Acceso; ViewModel de cola con clave `token-generación` | `KT/ui/navigation/NuclearNavHost.kt` |
+| 55 | `AccesoViewModel` guarda la sesión validada; `AppContainer` crea `colaEnVivo`, `sesionLocal` y `restauradorSesion` | `KT/ui/screens/acceso/AccesoViewModel.kt`, `KT/NuclearApp.kt` |
+| 56 | Por variante: release usa el SSE real; debug solo con `-Pnuclear.colaReal=true` (con datos simulados no hay flujo) | `src/{debug,release}/…/ColaModulo.kt` |
+
+### Ciclo de vida del flujo
+- **Se abre** cuando coinciden: app en primer plano, sesión confirmada y una pantalla con sesión (inicio, buscar, detalle, cola, confirmación). **Se cierra** al pasar a segundo plano, al salir de la sesión o al destruirse el ViewModel.
+- Varias llamadas a `alPrimerPlano()` (recomposiciones, navegación) no abren otro: el ViewModel conserva un único `Job`.
+- Al volver a primer plano: nueva conexión → el servidor manda el estado completo → se aplica la regla de versiones.
+
+### Cómo se recupera la sesión tras recrearse el proceso
+1. Navigation restaura la pila; la pantalla con sesión espera (`conSesion`).
+2. Si el store está vacío, `RestauradorSesion` lee `id_sesion`/`id_establecimiento` de DataStore y el UUID existente.
+3. **Valida** pidiendo la cola de esa sesión: `200` → vigente; `404/410` → se borra lo guardado y se va a Acceso; sin red/otro error → no se da por vigente (se va a Acceso, lo guardado se conserva).
+4. Sin QR en la apertura, Acceso intenta la misma restauración y, si el servidor la confirma, entra directo.
+
+### Sigue pendiente
+Validación contra el backend real con PostgreSQL; `okhttp-sse` (ver dependencias); evento de cierre de sesión dentro del flujo (propuesta al backend); TalkBack; pruebas instrumentadas; incremento 5.
+
+### Levantar el sistema real (resumen; detalle en el historial)
+`npm run db:up` → `npm run migrar` → `npm start` (backend) → `adb reverse tcp:3000 tcp:3000` → `./gradlew installDebug -Pnuclear.colaReal=true`. El puerto 3000 ya lo puede ocupar el backend del E3: hay que detenerlo antes (con autorización).
+
+## Fase 3 — Validación contra el backend real (2026-11-10)
+
+No hubo cambios de código de Android en esta fase. Se validó el mapa completo de integración:
+`AppContainer` → `ColaRepositoryReal` / `ColaEnVivoSse` → `ColaViewModel` → pantallas, con `-Pnuclear.colaReal=true` y el backend E4 en `localhost:3000` (`adb reverse tcp:3000 tcp:3000`). Resultados por escenario en `matriz-aceptacion-e4.md`.
+
+**Puntos del mapa confirmados en vivo:** `InterceptorDispositivo` (el servidor reconoció el UUID: `es_mia`, `ya_voto`, `mi_votacion`), rutas con `id_sesion`, `201`/`200` y `voto.origen`, descarte de versiones (la versión del servidor sobrevivió a su reinicio), flujo solo en primer plano, `RestauradorSesion` (validación real), cierre de sesión → Acceso.
+
+**Propuestas de Android derivadas (no implementadas, requieren aprobación):**
+1. Aviso en Acceso cuando se vuelve por «sesión no disponible» (hoy el rebote es silencioso; F2).
+2. Ocultar o marcar como no disponible lo que dura 0 s hasta que la búsqueda y el catálogo coincidan (F1).
+3. Mostrar el intervalo y las canciones que faltan para votar de forma permanente (F4).
+
+### Levantar el sistema real (probado)
+1. Docker Desktop iniciado. 2. Detener cualquier proceso en el puerto 3000. 3. En `backend/`: `npm install` (primera vez) y `npm run db:up`. 4. Con las variables **en el proceso** (o en `.env`): `DATABASE_URL=postgres://ponga:ponga@localhost:5433/ponga`, `CATALOGO_SEMILLA=true`, `SIMULACION_HABILITADA=true`, `REPRODUCTOR_TOKEN=<prueba>`; `node src/server.js` (aplica `001_esquema.sql` y carga las sesiones del mock). 5. `adb reverse tcp:3000 tcp:3000`. 6. `./gradlew installDebug -Pnuclear.colaReal=true`. 7. Abrir `https://nuclear.example.com/s/demo-activa-001`. Para avanzar la cola: `POST /api/sesiones/SES-MOCK-001/reproduccion/iniciar` y `…/siguiente` con `X-Reproductor-Token`.
+
+## Fase 4 — Cierre y estabilización (2026-11-10)
+
+| # | Cambio | Archivo |
+|---|---|---|
+| 57 | `ColaEnVivoSse` reconoce `event: sesion_cerrada` → `Terminado(SESION_NO_DISPONIBLE)` y no reconecta | `KT/data/cola/ColaEnVivoSse.kt` |
+| 58 | `textoVotacion` e `InfoVotacion`: cuántas canciones faltan para pedir o votar (cola y Detalle) | `KT/ui/components/Votos.kt`, `KT/ui/screens/cola/ColaScreen.kt`, `KT/ui/screens/detalle/DetalleScreen.kt` |
+| 59 | `NuclearNavHost` pasa `mi_votacion` al Detalle y, al terminar la sesión, abre «La sesión de este establecimiento ya terminó» (no un rebote silencioso a Acceso) | `KT/ui/navigation/NuclearNavHost.kt` |
+| 60 | Pruebas instrumentadas (`androidTest`) y su runner | `app/src/androidTest/…/EntornoRealInstrumentadaTest.kt`, `app/build.gradle.kts`, `gradle/libs.versions.toml` |
+
+**Backend (rama `feature/e4-backend`, ya integrada):** regla única de canción permitida (`youtube.js`), regla de inactividad (`comun-e4.js`, `cola.js`), voto sobre la que suena (`cola.js`), acceso por QR desde PostgreSQL (`sesiones.js`, `app.js`), aviso de cierre (`flujo.js`), sobre y eventos (`eventos.js`, `reproduccion.js`), migración `002`.
+
+**Instrumentadas:** `connectedDebugAndroidTest` no funciona aquí (Gradle no puede descargar `gradle-work-action` por el certificado). Se ejecuta con: `./gradlew assembleDebug assembleDebugAndroidTest`, `adb install -r` de ambos APK y `adb shell am instrument -w co.edu.cue.nuclear.cliente.test/androidx.test.runner.AndroidJUnitRunner`. Resultado: 4/4. **No hay pruebas de Compose** (`ui-test-junit4` no se puede descargar).

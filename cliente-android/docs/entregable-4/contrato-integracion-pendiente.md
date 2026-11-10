@@ -6,6 +6,54 @@
 
 **Estado de definición:** `SIN DEFINIR` (no hay nada acordado) · `BORRADOR` (aparece en el ejemplo ilustrativo, no es contrato) · `DECIDIDO` (regla de negocio cerrada por el equipo; el campo sigue sin definir).
 
+
+> **ACTUALIZACIÓN (Fase 4, 2026-11-10):** cambios del contrato (todos en `docs/entregable-4/contrato-api-e4.md`, sección 12): **H1** (cola inactiva → `puede_votar = true`), **H3c** (`/votos` acepta `en_reproduccion`), motivo `demasiado_larga`, y el evento SSE **`sesion_cerrada`**. En Android: `EventoFlujo.Terminado(SESION_NO_DISPONIBLE)` se produce también por `sesion_cerrada`; `ColaViewModel.sesionNoDisponible` lleva a la pantalla «La sesión de este establecimiento ya terminó»; `MiVotacion` se muestra como texto (`textoVotacion`). **Sin cambios en los modelos ni en los DTO** (los campos nuevos solo están en los eventos analíticos, que Android no lee). Fila nueva de la tabla SSE: `event: sesion_cerrada` → `Terminado(SESION_NO_DISPONIBLE)`, sin reconectar.
+>
+> **ACTUALIZACIÓN (Fase 3, 2026-11-10):** el contrato se **comprobó contra el backend real**: las respuestas reales coincidieron con los DTO y la tabla de errores de Android en los casos ejecutados (201/200, `voto.origen` `solicitud` y `manual`, `409` de intervalo, duplicado y no votable, `422 cancion_no_permitida` con `detalle.motivo`, `410 sesion_cerrada`, `404 solicitud_inexistente`, SSE con `retry: 3000`, `version` creciente que sobrevive al reinicio del servidor). **No apareció ninguna diferencia de campos.** Los únicos desajustes son de comportamiento (F1–F3 en `matriz-aceptacion-e4.md`), no de contrato.
+>
+> **ACTUALIZACIÓN (Fase 2, 2026-11-10):** `ColaEnVivo` y `EventoFlujo` (`Conectado`, `Estado`, `Reconectando`, `Terminado`) modelan el flujo SSE; `ColaUiState` añade `conexionEnVivo` (`Inactiva`, `Conectada`, `Reconectando`) y `sesionNoDisponible`; `SesionGuardada` es el contexto mínimo persistido (`id_sesion`, `id_establecimiento`). **Tabla SSE → estado de Android:**
+>
+> | Del servidor | En Android |
+> |---|---|
+> | `200 text/event-stream` | `Conectado` |
+> | `event: estado` + `data` (JSON de `GET /cola`) | `Estado(EstadoCola)`; se aplica solo si su `version` es mayor que la aplicada |
+> | `: ping` | se ignora (no produce mensaje) |
+> | `retry: n` | intervalo de reconexión (por defecto 3000 ms; acotado a 250–30000) |
+> | `event:` distinto de `estado`, o `data` ilegible | se ignora ese mensaje, el flujo sigue |
+> | corte, fin del flujo, 5xx, sin red, respuesta que no es `event-stream` | `Reconectando(n)` y nueva conexión tras `n` ms |
+> | 404/410 con `sesion_inexistente` / `sesion_cerrada` / `qr_desactivado` | `Terminado(SESION_NO_DISPONIBLE)`: no reconecta; se limpia la sesión local y se vuelve a Acceso |
+> | otro 4xx (`dispositivo_id_invalido`, 404 sin código…) | `Terminado(SERVIDOR)`: no reconecta (no se arregla reintentando) |
+>
+> **ACTUALIZACIÓN (Fase 1, 2026-11-09):** el contrato ya existe (`docs/entregable-4/contrato-api-e4.md` y `backend/test/fixtures/contrato-e4.json`) y los modelos de abajo dejaron de ser provisionales. Esta nota resume qué cambió; las secciones siguientes son el análisis anterior y se conservan como historial.
+>
+> | Modelo | Cambio |
+> |---|---|
+> | `SolicitudCola` | `miVoto: TipoVoto?` **desaparece**; ahora `esMia` y `yaVoto` van **por separado** (no se deduce el origen del voto de ellos). `puedeVotar = PENDIENTE && !yaVoto` |
+> | `TipoVoto` | Se conserva solo como **origen informado por el servidor** en `ResultadoSolicitud.Aceptada.origenVoto` y `ResultadoVoto.Registrado.origenVoto` (`voto.origen`: `solicitud` → AUTOMATICO, `manual` → MANUAL) |
+> | `EstadoCola` | Añade `version: Long?`, `generadoEn: Instant?`, `reglasVotacion`, `miVotacion` y `esMasNuevoQue(versionAplicada)` (descarta versiones menores o iguales) |
+> | `ReproduccionActual` | Añade `idReproduccion` y `totalVotos` (opcionales) |
+> | `MiVotacion`, `ReglasVotacion` | Nuevos; `puedeVotar` solo es ayuda visual |
+> | `ResultadoSolicitud.Aceptada` / `ResultadoVoto.Registrado` | Añaden `origenVoto` y `miVotacion` (opcionales) |
+> | `TipoErrorCola` | Añade `SESION_NO_DISPONIBLE`, `SERVICIO_NO_DISPONIBLE` y `SIN_CONFIRMAR` |
+> | `EstadoBotonVoto` | `VotadoManual` → `Votado`, `VotoAutomatico` → `TuSolicitud`, nuevo `Espera` («Aún no», cuando `mi_votacion.puede_votar` es falso) |
+>
+> **Tabla de errores implementada** (`ColaRepositoryReal.traducirError`, decide por `error.codigo`):
+>
+> | HTTP | `codigo` | Resultado en Android |
+> |---|---|---|
+> | 409 | `intervalo_no_cumplido` | `Rechazada/Rechazado(INTERVALO_NO_CUMPLIDO, faltantes = detalle.canciones_restantes)` |
+> | 409 | `voto_duplicado` | `VOTO_DUPLICADO` |
+> | 409 | `solicitud_no_votable` | `SOLICITUD_NO_VOTABLE` |
+> | 422 | `cancion_no_permitida` | `CANCION_NO_DISPONIBLE` |
+> | 404 | `cancion_inexistente` | `CANCION_NO_DISPONIBLE` |
+> | 404 / 410 | `sesion_inexistente`, `sesion_cerrada`, `qr_desactivado` | `Error(SESION_NO_DISPONIBLE)` |
+> | 400 / 404 | `dispositivo_id_invalido`, `cancion_invalida`, `solicitud_inexistente` | `Error(SERVIDOR)` (no son decisiones de negocio para la persona) |
+> | 502 / 503 | códigos de YouTube del E3 | `Error(SERVICIO_NO_DISPONIBLE)` |
+> | 500 y cualquier otro | `error_interno`, códigos desconocidos | `Error(SERVIDOR)` |
+> | — | timeout o corte después de enviar un POST | `Error(SIN_CONFIRMAR)`; sin red antes de enviar → `CONEXION` |
+>
+> **Reglas de los mapeadores:** no se reordena `cola[]`; `ya_voto`/`es_mia` ausentes (vista pública) = `false`; `disponible = true` (el backend solo entrega canciones permitidas); un estado de solicitud, un `resultado` o una fecha fuera de contrato es respuesta inesperada → `SERVIDOR`.
+
 ## Principios del diseño actual
 
 1. **Modelos de dominio, no DTOs.** Contienen solo lo que la interfaz necesita. Al integrar se crearán DTOs `@Serializable` (como `CancionDto` en búsqueda) y mapeadores `aDominio()`.

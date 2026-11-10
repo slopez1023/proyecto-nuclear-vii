@@ -383,3 +383,160 @@ No se cambió ningún ajuste del dispositivo. Verificados: letra 1.00002, rotaci
 3. **Interfaz `ColaEnVivo`** (Android-interna, sin formato de servidor) con simulador en debug, como paso 4B, para tener lista la capa de actualizaciones antes de recibir el contrato SSE.
 4. **Selección real/simulado en debug** con una propiedad de Gradle, cuando exista el real.
 5. Debe confirmarse que la **cola real traerá `youtube_video_id`** (lo usa el Detalle; C3, C4).
+
+---
+
+## Integración Fase 1 — API, DTO, mapeadores y repositorio real (2026-11-09)
+
+Rama `feature/e4-android-frontend`, con el backend de Juan Camilo ya incorporado por merge local (`5d59c0a`); respaldo en `backup/e4-android-pre-integracion`. Sin commits ni push posteriores.
+
+### Decisiones aprobadas por Santiago
+1. `okhttp-sse:4.12.0` autorizada **(se añade en la Fase 2)**. 2. `mi_votacion` entra al modelo; `puede_votar` es solo ayuda visual. 3. **No** se deduce `miVoto` con `es_mia`/`ya_voto`: se conservan `esMia` y `yaVoto`; el origen sale de `voto.origen`. 4. Persistir el contexto mínimo de sesión en DataStore (**pendiente**). 5. SSE abierto en primer plano y cerrado en segundo plano (**Fase 2**).
+
+### Qué se hizo
+- `ColaApi`, DTO (`ColaDtos.kt`), mapeadores y `ColaRepositoryReal`; `InterceptorDispositivo` en el cliente de red; rutas con `id_sesion`.
+- Modelos: `EstadoCola` con `version`, `generadoEn`, `reglasVotacion`, `miVotacion`; `SolicitudCola.yaVoto` (adiós `miVoto`); `MiVotacion`, `ReglasVotacion`; tres `TipoErrorCola` nuevos.
+- `ColaViewModel`: descarte de estados con versión menor o igual; tras `SIN_CONFIRMAR` consulta la cola y **no repite** la operación.
+- UI: botón `Votado` / `TuSolicitud` / `Espera` («Aún no»); mensajes de sesión no disponible, servicio no disponible y «No pudimos confirmar tu acción».
+- Selección por variante: release real; debug simulado salvo `-Pnuclear.colaReal=true`.
+- **No se hizo:** SSE, persistencia de sesión, `okhttp-sse`, eventos analíticos del E4 (los emite el servidor).
+
+### Archivos
+Creados (`KT/data/…`): `cola/ColaApi.kt`, `cola/ColaDtos.kt`, `cola/ColaMapeadores.kt`, `cola/ColaRepositoryReal.kt`, `InterceptorDispositivo.kt`. Pruebas: `data/cola/{ContratoE4,ColaMapeadoresTest,ColaRepositoryRealTest}.kt`, `data/InterceptorDispositivoTest.kt`.
+Modificados: `NuclearApp.kt`, `data/RedModule.kt`, `data/cola/Cola.kt`, `ui/components/{ElementoCola,MensajeOperacion,Votos}.kt`, `ui/screens/cola/{ColaScreen,ColaViewModel}.kt`, `ui/screens/detalle/TarjetaEstadoEnCola.kt`, `app/build.gradle.kts`, `src/debug/…/{ColaModulo,ColaRepositoryFalso,DatosSimulados,ColaPreview,DetalleSolicitarPreview}.kt`, `src/release/…/ColaModulo.kt`, y las pruebas `ComponentesColaTest`, `ColaScreenLogicaTest`, `ColaViewModelTest`, `ConfirmacionTextosTest`, `EstadoCancionEnColaTest`, `ColaRepositoryFalsoTest`.
+Documentos: los cinco de esta carpeta.
+
+### Pruebas
+**1. Unitarias JVM:** **224 pasan, 0 fallos**: las 173 anteriores (migradas de `miVoto` a `yaVoto`) + 51 nuevas (18 de DTO y mapeadores con el fixture, 21 del repositorio real con MockWebServer, 4 del interceptor, 6 del ViewModel y 2 del botón de voto). **Aserciones modificadas:** `ComponentesColaTest` («el voto manual y el automático se muestran distinto» pasó a «la solicitud propia y el voto a una ajena se muestran distinto sin deducir el origen») y la de tonos de error (los 3 errores nuevos son «aviso»; conexión y servidor siguen «peligro»).
+**Cubren:** 200 y 201; solicitud nueva y voto sumado; canción sonando (posición `null`); cola vacía con reproducción `null`; `mi_votacion`; todos los códigos de la tabla; campos opcionales y nulos; versiones; UUID y ruta de sesión (sin token QR); timeouts y recuperación (una sola petición, luego se consulta la cola); sin sesión no llama a la red.
+**Las pruebas del repositorio real usan un servidor HTTP simulado (MockWebServer), no el backend.**
+**2. Compilación:** debug, `-Pnuclear.colaReal=true` y `compileReleaseKotlin`: exitosas. `assembleRelease` **completo falla** en `lintVitalAnalyzeRelease` (no puede descargar `lint-gradle:32.5.0`: error de certificado SSL `PKIX` del equipo, ya visto antes); con las tres tareas de lint vital excluidas, compila y genera el APK. El lint de release **no se ejecutó**.
+**3. Vistas previas:** compilan; no se revisaron visualmente. **4. Instrumentadas:** no existen todavía.
+**5. Manuales en el TECNO KL8** (vertical, 1.0×) con `-Pnuclear.colaReal=true` contra un **servidor local de fixtures** (los cuerpos exactos del backend, **no el backend**) y `adb reverse tcp:3000 tcp:3001`: la cola mostró reproducción, orden, «Votaste», «Aún no» y esperas; el servidor registró `X-Dispositivo-Id` con el UUID en `/cola` y `/solicitudes` y **sin** cabecera en el acceso del E3 y los eventos; solicitar → «Solicitud registrada» (201); con el servidor colgado la app mostró «Enviando solicitud…» y a los 15 s «No pudimos confirmar tu acción», con **un solo POST** y una consulta de la cola; con 410 `sesion_cerrada` mostró «Sesión no disponible». Después se restauró `adb reverse tcp:3000 tcp:3000`, se detuvo el servidor de fixtures y se reinstaló el debug simulado (cola simulada correcta). El proceso `node src/server.js` que ya ocupaba el puerto 3000 (backend del E3) **no se tocó**.
+**6. Contra PostgreSQL / backend real del E4:** **no se ejecutó.** Docker Desktop estaba instalado pero su motor no estaba en marcha; no se inició sin autorización. La validación local queda preparada: `npm run db:up`, `backend/.env` (`DATABASE_URL`, `CATALOGO_SEMILLA=true`, `REPRODUCTOR_TOKEN`, `SIMULACION_HABILITADA=true`), `npm run migrar`, `npm start`, `adb reverse tcp:3000 tcp:3000` e `installDebug -Pnuclear.colaReal=true`.
+**7. Accesibilidad:** sin cambios en el procedimiento; TalkBack sigue **pendiente**. El botón «Aún no» y «Tu solicitud» tienen descripción propia, sin probar con TalkBack.
+
+### Ajustes del celular
+No se cambió ningún ajuste (letra 1.00002, rotación 0, TalkBack sin servicios). Solo se modificó y se restauró el `adb reverse`.
+
+### Hallazgos
+- Con el servidor devolviendo siempre la misma versión, el GET posterior a una solicitud se descarta (misma versión): la confirmación conserva lo de la respuesta del POST. Con el backend real la versión crece y se aplica.
+- Con 410 al abrir la cola, la pantalla conserva la última cola cargada; el aviso aparece en la siguiente acción.
+
+### Limitaciones y pendientes
+SSE (Fase 2); persistencia de sesión; validación contra PostgreSQL; lint de release; TalkBack; revisión de Karen de los eventos del servidor; H1 y H3c del backend sin decidir.
+
+---
+
+## Integración Fase 2 — SSE real, persistencia de sesión y revisión de analítica (2026-11-10)
+
+Rama `feature/e4-android-frontend`. Sin commits ni push.
+
+### Qué se hizo
+- **SSE** (`ColaEnVivoSse`, `LectorSse`, `ColaEnVivo`): cliente independiente del de Retrofit, `Accept: text/event-stream` y `X-Dispositivo-Id`, solo el evento `estado`, ping ignorado, `retry:` del servidor, lectura de 30 s, errores HTTP previos clasificados (404/410 de sesión terminan; otros 4xx terminan; 5xx y cortes reconectan), cancelación que cierra el socket.
+- **Ciclo de vida**: flujo abierto solo en primer plano y dentro de la sesión; un único flujo por ViewModel; se cierra al ir a segundo plano y se reabre al volver.
+- **Versiones**: GET y SSE comparten la regla «descartar versión menor o igual».
+- **Sesión persistida** (`SesionLocal`, `RestauradorSesion`, `conSesion`): `id_sesion` e `id_establecimiento` en el DataStore del UUID, validados con el servidor antes de darlos por vigentes; sesión cerrada, inexistente o expirada → se limpia y se vuelve a Acceso.
+- **Analítica**: `revision-analitica-e4.md` (matriz de 9 eventos y 11 hallazgos). No se tocó el backend ni se creó ningún evento; Android no envía eventos del E4.
+
+### Desviación respecto a lo autorizado
+`okhttp-sse:4.12.0` **no se pudo descargar** (error de certificado `PKIX` del equipo; sin copia en caché). Se probó añadirla, falló la resolución y **se revirtió** (`libs.versions.toml` y `build.gradle.kts` quedaron como estaban). Se implementó el lector sobre OkHttp, sin dependencia nueva.
+
+### Archivos
+Creados (`KT/…`): `data/cola/{ColaEnVivo,LectorSse,ColaEnVivoSse}.kt`, `data/sesion/{SesionLocal,RestauradorSesion}.kt`, `ui/navigation/ConSesion.kt`. Pruebas: `data/cola/{ColaEnVivoSseTest,LectorSseTest,ServidorSseManual}.kt`, `data/sesion/RestauradorSesionTest.kt`, `ui/screens/cola/ColaViewModelEnVivoTest.kt`. Documento: `revision-analitica-e4.md`.
+Modificados: `NuclearApp.kt`, `ui/navigation/NuclearNavHost.kt`, `ui/screens/cola/ColaViewModel.kt`, `ui/screens/acceso/AccesoViewModel.kt`, `src/debug/…/ColaModulo.kt`, `src/release/…/ColaModulo.kt`, `AccesoViewModelTest.kt` y los cinco documentos de integración.
+
+### Pruebas
+**1. Unitarias JVM: 276 pasan, 0 fallos** (las 224 anteriores + 52 nuevas: 17 del cliente SSE, 7 del lector, 12 de sesión local y restauración, 14 del ViewModel en vivo y 2 de que Acceso guarda la sesión). Ejecutadas con `cleanTestDebugUnitTest` dos veces seguidas, sin intermitencias. Cubren: conexión y cabeceras, estado inicial con el fixture real, actualizaciones sucesivas, ping, descarte de versiones (flujo y GET), reconexión con el `retry` del servidor, 503/410/404/400 previos al flujo, sin servidor, respuesta que no es `event-stream`, cancelación (el servidor ve el socket cerrarse), timeout de lectura, sin conexiones duplicadas, primer y segundo plano, persistencia y restauración (válida, cerrada, sin confirmar, concurrente, sin sesión), y que el QR token no se guarda.
+**Las pruebas SSE usan servidores simulados** (MockWebServer y un servidor de sockets propio); no el backend ni PostgreSQL. Ninguna prueba existente se modificó.
+**2. Compilación:** debug, debug con `-Pnuclear.colaReal=true`, `compileReleaseKotlin`: exitosos. `assembleRelease` completo **falla** en `lintVitalAnalyzeRelease` (certificado `PKIX`); sin las 3 tareas de lint vital compila. Lint de release **no ejecutado**.
+**3. Vistas previas / instrumentadas:** sin cambios; la navegación con el ciclo de vida solo se verificó a mano (no hay pruebas instrumentales todavía).
+**4. Manuales en el TECNO KL8** (con `-Pnuclear.colaReal=true` y un servidor local de fixtures con SSE en `localhost:3001`, redirigido con `adb reverse tcp:3000 tcp:3001`; **no es el backend**):
+- La cola mostró el estado inicial del flujo y los votos de una solicitud subieron solos (16, 20, 24, 28) mientras el GET posterior, con versión vieja, **no** los pisó.
+- Pasar a **segundo plano** cerró el flujo en el servidor en ~2 s; al volver se abrió **uno** nuevo (3 aperturas y 2 cierres en total, nunca dos a la vez).
+- Cortar el servidor con el flujo abierto: la app siguió reintentando y, al volver el servidor, se reconectó sola.
+- **Sesión cerrada con el flujo abierto** (servidor devolviendo 410): la app limpió la sesión y volvió a Acceso.
+- **Muerte real del proceso** (`kill -9` con `run-as`) con la cola abierta: al relanzar, Navigation restauró la cola y la app **validó la sesión** (un `GET /cola` con el UUID existente) antes de mostrarla y abrir el flujo. Con la sesión cerrada en el servidor, volvió a Acceso, borró lo guardado y el arranque siguiente ya no consultó nada.
+**5. Contra PostgreSQL / backend real:** **no ejecutada.** Docker Desktop instalado pero su motor no estaba en marcha; no se arrancó sin autorización. El puerto 3000 lo ocupa `node src/server.js` (backend del E3, PID 26404); no se detuvo. `backend/.env` no se abrió ni se modificó.
+**6. Accesibilidad:** sin cambios; TalkBack sigue **pendiente**.
+
+### Ajustes del celular
+No se cambió ningún ajuste. Solo se modificó y se restauró el `adb reverse` (3000→3000). Durante las pruebas el teléfono tenía TikTok en primer plano en un momento dado (no lo abrí yo); se volvió a abrir la app de PONGA con `am start`. Se reinstaló el debug simulado al terminar.
+
+### Hallazgos
+- El servidor de fixtures reinicia su versión en 5 cada vez que se conecta, así que tras reconectar los estados nuevos se descartaban hasta superar la versión ya mostrada: es **el comportamiento deseado** de la regla de versiones; con el backend real la versión solo crece.
+- Una primera versión del servidor de fixtures cerraba el flujo al instante por usar el evento `close` de la petición (en Node ≥16 se dispara al terminar la petición, no al cerrarse el socket); era un error del servidor de prueba, no de la app.
+- Con la sesión cerrada, si el QR original sigue en la intención de la actividad, Acceso lo vuelve a validar y, si el servidor lo acepta, entra de nuevo: es lo esperado.
+
+### Pendientes
+Validación con PostgreSQL; `okhttp-sse` (certificado); evento de cierre de sesión dentro del flujo; TalkBack; pruebas instrumentadas; Karen debe confirmar la revisión de analítica; incremento 5; H1 y H3c del backend.
+
+---
+
+## Integración Fase 3 — Validación contra el backend real con PostgreSQL 16 (2026-11-10)
+
+Rama `feature/e4-android-frontend`. Sin commits ni push. **Sin cambios de código de Android** en esta fase (solo documentación).
+
+### Qué se hizo
+Preparar el entorno (Docker, PostgreSQL 16, backend E4), ejecutar las pruebas del backend y validar la app real contra él en el TECNO KL8. El detalle de los 15 escenarios, la matriz de aceptación, H1/H3c y los hallazgos están en **`matriz-aceptacion-e4.md`**; la analítica, en **`revision-analitica-e4.md`** (sección 7, con las propuestas A1/A2).
+
+### Entorno (antes → durante)
+Docker Desktop apagado → iniciado; sin contenedor ni imagen de PostgreSQL del proyecto → `ponga-postgres` (`postgres:16`, puerto 5433, volumen `backend_ponga-pgdata`); puerto 3000 con el backend del E3 (PID 26404, confirmado por su línea de comandos) → detenido y sustituido por el backend E4. `backend/.env` solo tenía `YOUTUBE_API_KEY`: por instrucción de Santiago, las variables que faltaban se pasaron **solo al proceso** (dotenv no pisa variables ya definidas) y `.env` no se abrió ni modificó. `npm install` añadió `pg` y otros 13 paquetes a `node_modules` (sin cambios en archivos versionados).
+
+### Pruebas
+**1. Android JVM:** **276 pasan, 0 fallos** (sin cambios en el código).
+**2. Backend:** **110 pasan, 0 fallos** contra PostgreSQL 16 (`npm test`, con `DATABASE_URL_TEST` en el proceso). La primera ejecución falló 10 pruebas por falta del módulo `pg`; tras `npm install` pasaron todas.
+**3. Compilación:** debug y debug con `-Pnuclear.colaReal=true` exitosos. **Release completo: FALLA** en `lintVitalAnalyzeRelease` (`PKIX path building failed`, ambiental, sin resolver); sin las 3 tareas de lint vital compila. **El lint de release no se ejecutó.**
+**4. Manuales en el TECNO KL8 contra el backend real:** 15 escenarios (ver la matriz): **11 completos** (1 a 5, 8, 9 y 11 a 14), **4 parciales** (6, 7, 10 y 15) y ninguno fallido ni sin ejecutar. Los parciales lo son porque la app **evita** pedir canciones ya en cola o sonando y bloquea el voto duplicado (el backend sí se comprobó por HTTP) y porque **no había segundo teléfono** (el segundo dispositivo fue HTTP).
+**5. Accesibilidad / tableta:** no se probaron contra el backend real; TalkBack sigue **pendiente**.
+
+### Hallazgos (detalle en la matriz)
+H1 reproducido en vivo; H3c confirmado; F1 (búsqueda y catálogo), F2 (acceso con mock frente a sesión en BD, con rebote silencioso), F3 (catálogo acepta transmisión de 4,7 h y un video de recetas), F4 (intervalo no visible), F5 (sin aviso de cierre en el flujo).
+
+### Restauración del entorno
+Se hace al final de la sesión y se anota en el informe. Quedó así: se detuvo mi backend E4; el contenedor `ponga-postgres` se **detuvo sin eliminarlo** (con su volumen y datos de prueba); el puerto 3000 se **repobló con un backend del E3** levantado desde una copia de `develop` (`git archive`, en el directorio temporal; PID nuevo 43620), porque la copia de trabajo ahora tiene el código del E4, que exige PostgreSQL. **No es idéntico al original:** es otro proceso y su archivo de eventos vive en esa copia, no en `backend/data`; `adb reverse` igual que al inicio; se reinstaló el debug simulado en el celular; se cerró Docker Desktop (estaba apagado al empezar; los contenedores `eventia-*`, que Docker Desktop inició solos, volvieron a quedar detenidos).
+
+### Datos de prueba dejados en la BD
+La base `ponga` (volumen `backend_ponga-pgdata`) conserva las ~12 solicitudes, los votos y las reproducciones de la validación, y la sesión `SES-MOCK-001` quedó `activa`. Nada se borró. Para repetir la validación desde cero, un `docker compose down -v` **eliminaría** el volumen (no se ejecutó).
+
+### Pendientes
+Dos teléfonos reales; TalkBack; tableta; decisiones H1/H3c; F1–F3 (Juan Camilo); A1/A2 y confirmación de Karen; lint de release (certificado); incremento 5.
+
+### Revisión de consolidación (2026-11-10)
+Se revisó la documentación contra la evidencia: se corrigió el recuento de escenarios (**11 completos y 4 parciales**, no 9 y 4), se actualizaron frases de las Fases 1 y 2 que decían «sin validar contra el backend real» y se separaron en la revisión de analítica los hallazgos de las propuestas (A1 a A5). Sin cambios de código.
+
+---
+
+## Fase 4 — Cierre y estabilización (2026-11-10)
+
+Rama `feature/e4-android-frontend`. El asistente asumió los roles de backend, Android y analítica por instrucción de Santiago (equipo no disponible) y **tomó** las decisiones pendientes. Detalle de decisiones, alternativas y justificación en `matriz-aceptacion-e4.md`, sección 8.
+
+### Qué se hizo
+- **Backend (Juan Camilo):** H1 (regla de inactividad), H3c (votar la que suena), F1/F3 (regla única de canción permitida, tope de 20 min, migración `002`), F2 (acceso por QR desde PostgreSQL), aviso `sesion_cerrada` por SSE, y analítica A1/A2/A3 (`cola_vacia`)/A5/A6/A7. Contrato y propuesta actualizados.
+- **Android (Santiago):** `sesion_cerrada` en el cliente SSE; texto del intervalo en cola y Detalle; pantalla de sesión terminada; pruebas instrumentadas.
+- **Analítica (Karen, revisión técnica independiente del asistente):** decisiones A1 a A11 en `revision-analitica-e4.md`, sección 8.
+- **Fixture:** `contrato-e4.json` pasó de 20 a 33 casos y las pruebas de Android lo leen.
+
+### Archivos
+Backend: `src/{youtube,catalogo,comun-e4,cola,reproduccion,flujo,eventos,sesiones,app}.js`, `src/db/repositorio.js`, `migrations/002_motivo_demasiado_larga.sql`, pruebas `test/e4-cierre.test.js` (nueva), `backend.test.js`, `e4-contrato`, `e4-intervalo`, `e4-reproduccion`, `e4-solicitudes`, `e4-unidad`, `e4-esquema` y `fixtures/contrato-e4.json`.
+Android: `data/cola/ColaEnVivoSse.kt`, `ui/components/Votos.kt`, `ui/screens/cola/ColaScreen.kt`, `ui/screens/detalle/DetalleScreen.kt`, `ui/navigation/NuclearNavHost.kt`, `androidTest/…/EntornoRealInstrumentadaTest.kt`, `app/build.gradle.kts`, `gradle/libs.versions.toml`; pruebas `ColaMapeadoresTest`, `ColaRepositoryRealTest`, `ColaEnVivoSseTest`, `ComponentesColaTest`.
+Documentos: `docs/entregable-4/contrato-api-e4.md`, `propuesta-backend-e4.md` y los seis de `cliente-android/docs/entregable-4/`.
+
+### Pruebas
+**1. Backend:** **125 pasan, 0 fallos** contra PostgreSQL 16 (110 anteriores +15 nuevas). Siete pruebas existentes se modificaron **a propósito** porque fijaban el comportamiento que se decidió cambiar: H3c (2), eventos (3), fixture, mapeo de canciones del E3 (los mocks ahora llevan categoría y privacidad) y la lista de migraciones.
+**2. Android JVM:** **285 pasan, 0 fallos** (276 +9). Tres aserciones de pruebas existentes se actualizaron por el nuevo fixture (versión y elegibilidad del primer mensaje, votos de la canción que suena).
+**3. Instrumentadas en el TECNO: 4/4** (`am instrument`; `connectedDebugAndroidTest` bloqueado por el certificado).
+**4. Compilación:** debug, debug con `-Pnuclear.colaReal=true`, `assembleDebugAndroidTest` y release **sin lint vital** compilan. **`assembleRelease` completo sigue fallando** (`PKIX`); el lint de release no se ejecutó.
+**5. Manuales contra el backend real (TECNO + PostgreSQL 16):** F1, H1, F4, cierre de sesión por SSE (3 s), F2 (QR de sesión cerrada), rango de 8 (61 y 100 virtuales) y eventos con el sobre nuevo. **No ejecutado:** dos teléfonos, TalkBack, tableta, Compose.
+
+### Incidentes
+- `connectedDebugAndroidTest` falló (`gradle-work-action`, certificado) → se ejecutó el mismo APK con `am instrument`.
+- Tras instalar los APK con `adb install`, el `adb reverse` se perdió (la app mostró «Sin conexión»); se restableció.
+- Un servidor SSE de prueba con `Content-Length` mayor cerraba el flujo al terminar el cuerpo; se usó un servidor de sockets propio (Fase 2).
+- Una captura del teléfono incluyó una notificación privada de otra aplicación; no se usa ni se documenta su contenido.
+
+### Entorno
+Docker Desktop se inició otra vez (estaba apagado). Se detuvo el backend E3 provisional (PID 43620, copia de `develop`) para usar el puerto 3000 con el backend E4 corregido, que aplicó la migración `002` a la BD `ponga` (aditiva). Restauración al final de la fase: ver el informe.
+
+### Pendientes reales
+Dos teléfonos reales; TalkBack; tableta; pruebas de Compose; lint de Release; reproductor real, A3 (resto), A4, hash del UUID e incremento 5 (E5).

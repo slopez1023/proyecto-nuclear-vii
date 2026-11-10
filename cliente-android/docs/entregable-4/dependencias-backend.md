@@ -3,7 +3,7 @@
 > Registro vivo. **Nada de lo que aparece aquí está acordado salvo que diga DECIDIDO.** Android no inventa rutas, campos ni códigos: cuando una dependencia se resuelve, se actualiza este archivo (estado y fecha) sin borrar el historial.
 >
 > Fuente de las decisiones: `docs/entregable-4/ESPECIFICACION_TECNICA_ENTREGABLE_4.md` (raíz del repositorio; sección 15 y borradores 7–8, **ilustrativos**).
-> Última actualización: 2026-11-09 (incremento 4, paso 4A). Sin cambios de estado: todas siguen PENDIENTE; las notas "Incremento 3" recogen lo que Android ya hace y necesita confirmar.
+> Última actualización: 2026-11-10 (**Fase 4**: cierre y estabilización; antes, Fases 1 a 3). Los estados de abajo reflejan el contrato recibido en `docs/entregable-4/contrato-api-e4.md` y `backend/test/fixtures/contrato-e4.json`. **Ninguna dependencia se ha validado todavía contra el backend real con PostgreSQL** (ver «Fase 1»).
 
 **Estados:** `PENDIENTE` (no se ha definido) · `EN PROCESO` (Juan Camilo lo está definiendo/implementando) · `BLOQUEADA` (impide avanzar un trabajo de Android) · `RESUELTA` (entregada y verificada contra Android).
 
@@ -15,24 +15,24 @@ Abreviatura de rutas: `KT` = `app/src/main/java/co/edu/cue/nuclear/cliente`. Los
 
 | ID | Dependencia | Estado | Bloquea integración |
 |---|---|---|---|
-| DEP-01 | Endpoint para obtener la cola | PENDIENTE | Sí |
-| DEP-02 | Endpoint para solicitar canciones | PENDIENTE | Sí |
-| DEP-03 | Endpoint para votar | PENDIENTE | Sí |
-| DEP-04 | Contratos JSON de solicitudes y respuestas | PENDIENTE | Sí |
-| DEP-05 | Códigos y motivos reales de rechazo | PENDIENTE | Sí |
-| DEP-06 | Envío e identificación del UUID del dispositivo | PENDIENTE | Sí |
-| DEP-07 | Identificación de sesión y establecimiento | PENDIENTE | Sí |
-| DEP-08 | Solicitud de una canción ya pendiente o en reproducción | PENDIENTE (regla decidida; señal en la respuesta sin definir) | Sí |
-| DEP-09 | Estados definitivos de las solicitudes | PENDIENTE | Parcial |
-| DEP-10 | Información de reproducción actual | PENDIENTE | Sí |
-| DEP-11 | Tiempo estimado de espera | PENDIENTE | No (la UI tolera `null`) |
-| DEP-12 | SSE: ruta y formato de eventos | PENDIENTE (mecanismo DECIDIDO) | No para pantallas; sí para tiempo real |
-| DEP-13 | Reconexión y desconexiones | PENDIENTE | No para pantallas; sí para tiempo real |
-| DEP-14 | Eventos analíticos desde Android | PENDIENTE | No |
-| DEP-15 | Errores de comunicación y respuestas del servidor | PENDIENTE | Sí |
-| DEP-16 | Estado de votación del dispositivo (`mi_votacion`, faltantes) *(adicional)* | PENDIENTE | No |
-| DEP-17 | Validación del catálogo al solicitar *(adicional)* | PENDIENTE | Parcial |
-| DEP-18 | Historial de solicitudes y votos del dispositivo *(adicional, aplazada)* | PENDIENTE | No (incremento 5) |
+| DEP-01 | Endpoint para obtener la cola | RESUELTA (contrato) · **validada contra el backend real (Fase 3)** | Sí |
+| DEP-02 | Endpoint para solicitar canciones | RESUELTA (contrato) · **validada contra el backend real (Fase 3)** | Sí |
+| DEP-03 | Endpoint para votar | RESUELTA (contrato) · **validada contra el backend real (Fase 3)** | Sí |
+| DEP-04 | Contratos JSON de solicitudes y respuestas | RESUELTA (contrato y fixture) · **validada contra el backend real (Fase 3)** | Sí |
+| DEP-05 | Códigos y motivos reales de rechazo | RESUELTA (contrato) · **validada contra el backend real (Fase 3)** | Sí |
+| DEP-06 | Envío e identificación del UUID del dispositivo | RESUELTA (cabecera `X-Dispositivo-Id`) | Sí |
+| DEP-07 | Identificación de sesión y establecimiento | RESUELTA (ruta con `id_sesion`) · sesión persistida y validada (Fase 2) | Sí |
+| DEP-08 | Solicitud de una canción ya pendiente o en reproducción | RESUELTA (201 `solicitud_creada` / 200 `voto_sumado`) | Sí |
+| DEP-09 | Estados definitivos de las solicitudes | RESUELTA (4 estados en el E4) | Parcial |
+| DEP-10 | Información de reproducción actual | RESUELTA (contrato) | Sí |
+| DEP-11 | Tiempo estimado de espera | RESUELTA (segundos enteros, `null` si falta duración) | No (la UI tolera `null`) |
+| DEP-12 | SSE: ruta y formato de eventos | RESUELTA (contrato SSE) · cliente SSE implementado (Fase 2) y **validado contra el backend real (Fase 3)** | No para pantallas; sí para tiempo real |
+| DEP-13 | Reconexión y desconexiones | RESUELTA (contrato: `retry: 3000`, ping 10 s) · reconexión implementada (Fase 2) y **validada contra el backend real (Fase 3)** | No para pantallas; sí para tiempo real |
+| DEP-14 | Eventos analíticos desde Android | RESUELTA (los emite el servidor; revisión técnica independiente en `revision-analitica-e4.md`; A1/A2/A3/A5/A6/A7 implementados, A4 diferido al E5) | No |
+| DEP-15 | Errores de comunicación y respuestas del servidor | RESUELTA (tabla de errores y aviso de cierre de sesión por SSE; sin idempotencia, mitigado: Android no repite) | Sí |
+| DEP-16 | Estado de votación del dispositivo (`mi_votacion`, faltantes) *(adicional)* | RESUELTA (`mi_votacion`) · incorporada al modelo como ayuda visual | No |
+| DEP-17 | Validación del catálogo al solicitar *(adicional)* | RESUELTA (422 `cancion_no_permitida`, 404 `cancion_inexistente`) | Parcial |
+| DEP-18 | Historial de solicitudes y votos del dispositivo *(adicional, aplazada)* | PENDIENTE (aplazada al incremento 5) | No (incremento 5) |
 
 ---
 
@@ -240,3 +240,82 @@ Abreviatura de rutas: `KT` = `app/src/main/java/co/edu/cue/nuclear/cliente`. Los
 - **DEP-07 (sesión y establecimiento):** `SesionActivaStore` ahora conserva `idSesion`, `dispositivoId` **e `idEstablecimiento`** (este último ya lo entrega el endpoint de acceso del E3). **Riesgo abierto:** el store vive solo en memoria. Si el sistema mata el proceso y Navigation restaura la pantalla (cola o detalle), la sesión queda vacía y el repositorio real no podría armar sus rutas. Decisión pendiente de Santiago (ver el historial): persistir la sesión o forzar el regreso al acceso. El contrato de Juan Camilo decide cuánto hay que persistir.
 - **DEP-12 (SSE):** OkHttp 4.12.0 ya está en el proyecto (lo trae Retrofit 3.0.0). SSE se podría leer con `okhttp-sse:4.12.0` (dependencia nueva, requiere aprobación) o manualmente con OkHttp, sin dependencia nueva. El cliente actual corta las lecturas a los 15 s, así que el flujo necesita un cliente derivado sin ese límite. **No se implementó nada.**
 - **DEP-15:** el patrón de errores para la cola será el de `BusquedaRepository` / `SesionRepository` (`IOException` → conexión, `SerializationException` → servidor, cuerpo `{error:{codigo,mensaje}}` → motivo). Falta la tabla de códigos (C8).
+
+## Fase 1 de la integración real (2026-11-09) — qué cubre cada contrato y qué sigue abierto
+
+> *Nota de consolidación (Fase 3): este apartado describe la Fase 1. La validación contra el backend real con PostgreSQL se hizo después; ver «Fase 3» más abajo.*
+
+**Lo que se hizo:** `ColaApi`, DTO, mapeadores, `InterceptorDispositivo` y `ColaRepositoryReal` (ver el historial). Se probó con **MockWebServer sirviendo los cuerpos exactos del fixture** (JVM) y en el TECNO KL8 contra un **servidor local de fixtures** (no es el backend). **No se ejecutó contra el backend de Juan Camilo con PostgreSQL**: Docker Desktop estaba instalado pero su motor no estaba en marcha, y no se inició sin autorización.
+
+| # | Qué entrega el backend (verificado en su código y en el fixture) | Estado | Dónde se usa en Android |
+|---|---|---|---|
+| C1 | `GET /api/sesiones/{idSesion}/cola`, `GET …/cola/flujo`, `POST …/solicitudes`, `POST …/solicitudes/{id}/votos` | RESUELTA | `ColaApi` |
+| C2 | Cuerpo de solicitar: solo `{"youtube_video_id"}` | RESUELTA | `SolicitudPeticionDto` |
+| C3 | `estado_cola`: `sesion_id`, `version`, `generado_en`, `reproduccion_actual?`, `reglas_votacion`, `mi_votacion?`, `cola[]` | RESUELTA | `EstadoColaDto` → `EstadoCola` |
+| C4 | Campos de solicitud (`ya_voto` y `es_mia` solo con la cabecera) | RESUELTA | `SolicitudColaDto` → `SolicitudCola` |
+| C5 | Estados `pendiente`, `en_reproduccion`, `reproducida`, `fallida` (la BD admite `saltada` y `retirada`, el E4 no los produce) | RESUELTA | `String.aEstadoSolicitud()`; un valor desconocido es respuesta inesperada → `SERVIDOR` |
+| C6 | 201 `solicitud_creada` / 200 `voto_sumado`, más `voto.origen` | RESUELTA | `SolicitudRespuestaDto.aDominio()` |
+| C7 | 201 con `{voto, solicitud, mi_votacion}` | RESUELTA | `VotoRespuestaDto.aDominio()` |
+| C8 | Tabla de errores por `error.codigo` | RESUELTA | `ColaRepositoryReal.traducirError` |
+| C9 | 404/410 de sesión; **con el SSE ya abierto no hay aviso de cierre** | PARCIAL | `TipoErrorCola.SESION_NO_DISPONIBLE`; Android se entera en la siguiente acción o al reconectar |
+| C10 | Cabecera `X-Dispositivo-Id` | RESUELTA | `InterceptorDispositivo` |
+| C11 | La ruta usa `id_sesion`; el establecimiento no va en las peticiones | RESUELTA | `SesionActivaStore` |
+| C12 | Segundos enteros; `null` si falta una duración | RESUELTA | `esperaEstimadaSegundos`, `segundosRestantesEstimados` |
+| C13 | Formato SSE (`id`=versión, `event: estado`, `data`=JSON de la cola) | RESUELTA | **Fase 2** |
+| C14 | `retry: 3000`, ping cada 10 s, `Last-Event-ID` ignorado | RESUELTA | **Fase 2** (cliente con `readTimeout` > 10 s o 0) |
+| C15 | Sin idempotencia: repetir tras un timeout puede dar `voto_duplicado` | PARCIAL | Android **no repite** y consulta la cola (`SIN_CONFIRMAR`) |
+| C16 | Sin paginación | RESUELTA | — |
+| C17 | Eventos del E4 los registra el servidor | PARCIAL | Android no envía eventos nuevos; falta revisión de Karen |
+| C18 | `contrato-e4.json` (20 casos) | PARCIAL | Faltan casos: 404 `solicitud_inexistente`, 404 `cancion_inexistente`, 410 `qr_desactivado`, 502/503, 405 y SSE con cambios; esas pruebas usan cuerpos escritos a mano |
+
+**Abierto con Juan Camilo / el equipo:** (1) sin aviso de sesión cerrada con el flujo abierto (C9); (2) voto manual sobre la canción que suena da `409 solicitud_no_votable` aunque pedirla sí suma voto (H3c, sin decidir); (3) **H1**: con pocos dispositivos la cola puede quedar vacía sin que nadie recupere el voto (afecta la prueba "dos celulares"); (4) revisión de Karen de los eventos del servidor; (5) completar el fixture.
+
+**Decidido por Santiago (2026-11-09):** `okhttp-sse:4.12.0` autorizada (se añade en la Fase 2, con el cliente SSE); `mi_votacion` incorporada como ayuda visual; **no** se deduce el origen del voto con `es_mia`/`ya_voto` (se conservan por separado y el origen sale de `voto.origen`); persistir el contexto mínimo de sesión en DataStore validándolo antes de darlo por vigente (**no implementado todavía**); el SSE se mantiene abierto con la app en primer plano y se cierra en segundo plano.
+
+## Fase 2 (2026-11-10) — SSE, sesión persistida y analítica
+
+> *Nota de consolidación (Fase 3): «Sin validar contra el backend real» era cierto en la Fase 2; la Fase 3 lo validó (sin segundo teléfono).*
+
+- **DEP-12 / DEP-13 (SSE):** implementado el cliente (`ColaEnVivoSse`) según el contrato: `GET /api/sesiones/{id}/cola/flujo`, `Accept: text/event-stream`, `X-Dispositivo-Id`, solo el evento `estado` (mismo DTO que `GET /cola`), `: ping` ignorado, `retry:` del servidor, lectura de 30 s. Probado con MockWebServer, con un servidor SSE de sockets y **en el TECNO KL8 contra un servidor local de fixtures** (no el backend). **Sin validar contra el backend real con PostgreSQL.**
+- **Dependencia `okhttp-sse:4.12.0` (autorizada): NO se pudo usar.** Gradle no puede descargarla en este equipo (error de certificado `PKIX`, el mismo que bloquea el lint de release) y no hay copia local. Se implementó el lector SSE sobre OkHttp (ya incluido), sin dependencia nueva; además permite leer el `retry:` real, cosa que `okhttp-sse` no expone. Se puede sustituir sin tocar a los consumidores (`ColaEnVivo`). **Decisión pendiente de Santiago:** mantener el lector propio (recomendado) o instalar la librería cuando se resuelva el certificado.
+- **DEP-07:** la sesión ahora se guarda (`id_sesion`, `id_establecimiento`) y se **valida con el servidor** antes de darla por vigente.
+- **C9 (sesión cerrada con el flujo abierto):** el contrato no tiene aviso de cierre dentro del flujo; Android lo detecta cuando el flujo se reconecta y recibe 404/410, o en la siguiente operación, y vuelve a Acceso. Sigue siendo una mejora posible del servidor (evento de cierre), no un bloqueo.
+- **Dispositivo activo:** el flujo abierto con `X-Dispositivo-Id` cuenta al dispositivo como activo y define el intervalo de TODOS. Android lo abre **solo en primer plano y dentro de la sesión** y lo cierra al pasar a segundo plano (el servidor mantiene 20 s de gracia).
+- **DEP-14:** ver `revision-analitica-e4.md` (matriz y 11 hallazgos; las más importantes: falta `id_establecimiento` en el sobre y no se distingue el voto sumado a una solicitud existente). Android no envía eventos del E4.
+
+## Fase 3 (2026-11-10) — validación contra el backend real
+
+Validado con el TECNO KL8, el backend E4 y PostgreSQL 16 (detalle y límites en `matriz-aceptacion-e4.md`). **Sigue sin probarse con dos teléfonos reales** (el segundo dispositivo fue HTTP).
+
+**Pendiente con Juan Camilo / el equipo (nada de esto impide usar el sistema):**
+| # | Tema | Qué se vio | Decisión |
+|---|---|---|---|
+| H1 | Bloqueo con pocos dispositivos | Reproducido en vivo: dos dispositivos que solo se piden canciones entre sí quedan sin voto con la cola vacía hasta que un tercero participa | **Equipo** (a/b/c) |
+| H3c | Votar la canción que suena | Pedirla suma voto (200); votarla da `409 solicitud_no_votable` | **Equipo** |
+| F1 | Búsqueda y catálogo no coinciden | Las transmisiones en vivo salen «disponibles» en la búsqueda y se rechazan al solicitar (`422 en_vivo`) | Juan Camilo |
+| F2 | Acceso (mock JSON) y sesión del E4 (BD) divergen | Sesión cerrada en BD: el QR se acepta y la app rebota a Acceso sin explicación | Juan Camilo (y un aviso en Android) |
+| F3 | El catálogo aceptó una transmisión de 4,7 h y un video de recetas | Revisar el filtro de categoría y poner un tope de duración | Juan Camilo |
+| A1, A2 | Analítica | Propuestas formales en `revision-analitica-e4.md` (sección 7) | Equipo y Karen |
+| — | Fixture `contrato-e4.json` | Sigue sin casos 404 `solicitud_inexistente`, 404 `cancion_inexistente`, 410 `qr_desactivado`, 502/503, 405 y SSE con cambios (en la validación se vieron en vivo el 404 de solicitud, el 422 y el 410) | Juan Camilo |
+
+## Fase 4 (2026-11-10) — cierre y estabilización
+
+Las decisiones que estaban abiertas se **tomaron** (el equipo no estaba disponible; ver `matriz-aceptacion-e4.md`, sección 8). Estado de lo que figuraba como pendiente:
+
+| Tema | Estado | Resumen |
+|---|---|---|
+| H1 | **RESUELTO** | Regla de inactividad: cola vacía y nada sonando → se puede pedir (`mi_votacion.puede_votar = true`) |
+| H3c | **RESUELTO** | Se acepta votar la canción que suena (201); terminada → 409 |
+| F1 | **RESUELTO** | La búsqueda usa la regla del catálogo |
+| F2 | **RESUELTO** | El acceso por QR lee de PostgreSQL; Android explica el fin de la sesión |
+| F3 | **RESUELTO** | Tope de 20 min (`demasiado_larga`). El «video de recetas» era categoría música según YouTube |
+| F4 | **RESUELTO** | La app muestra cuántas canciones faltan |
+| F5 / C9 | **RESUELTO** | `event: sesion_cerrada` en el SSE |
+| A1, A2, A5, A6, A7 | **RESUELTO** | Implementados |
+| A3 | **PARCIAL (justificado)** | `cola_vacia` sí; `cola_modificada` y `rango_dispositivos_cambiado` → E5 |
+| A4 | **DIFERIDO a E5** | La BD ya guarda las conexiones |
+| Fixture | **RESUELTO** | 33 casos (404, 405, 410, 422, 503, SSE con cambios y cierre) |
+| C15 (idempotencia) | **PARCIAL (aceptado)** | No hay clave de idempotencia; Android no repite y consulta la cola tras un timeout |
+| DEP-18 | PENDIENTE (aplazada) | «Mi participación», incremento 5 |
+
+De la lista C1 a C18: **17 resueltas y 1 parcial (C15)**. De las DEP: **17 resueltas y DEP-18 pendiente** (aplazada).
