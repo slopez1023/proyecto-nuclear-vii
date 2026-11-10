@@ -4,6 +4,7 @@ const express = require('express');
 const { validarToken } = require('./sesiones');
 const { validarEvento } = require('./eventos');
 const { YoutubeError } = require('./youtube');
+const { montarRutasE4 } = require('./rutas-e4');
 
 const MIN_Q = 2;
 const MAX_Q = 100;
@@ -18,9 +19,13 @@ const STATUS_POR_MOTIVO = {
 
 /**
  * Crea la app Express. Todas las dependencias se inyectan para poder probarla sin red.
- * @param {{sesiones:object[], youtube:{buscar:Function}, almacenEventos:{guardar:Function}, config?:object}} deps
+ * Dependencias del E4 (opcionales): sin `db` no se monta nada del E4 y la app es exactamente la del E3.
+ * @param {{sesiones:object[], youtube:{buscar:Function, obtenerVideo?:Function}, almacenEventos:{guardar:Function},
+ *          config?:object, db?:import('pg').Pool, ahora?:()=>number, conectividad?:object,
+ *          temporizadores?:object, aleatorio?:()=>number}} deps
+ *   Con `db`, `app.locals.e4` expone los servicios del E4 y `cerrar()` (termina flujos SSE y simulación).
  */
-function crearApp({ sesiones, youtube, almacenEventos, config = {} }) {
+function crearApp({ sesiones, youtube, almacenEventos, config = {}, db, ahora, conectividad, temporizadores, aleatorio }) {
   const app = express();
   app.disable('x-powered-by');
   app.use(express.json({ limit: '10kb' }));
@@ -87,6 +92,11 @@ function crearApp({ sesiones, youtube, almacenEventos, config = {} }) {
     almacenEventos.guardar(r.evento);
     res.status(202).json({ evento_id: r.evento.evento_id });
   });
+
+  // Entregable 4: cola, solicitudes, votos, reproducción, SSE y simulación (requiere PostgreSQL)
+  if (db) {
+    app.locals.e4 = montarRutasE4(app, { pool: db, youtube, almacenEventos, ahora, conectividad, config, temporizadores, aleatorio });
+  }
 
   // Android App Links (requiere host HTTPS público para la verificación de dominio)
   app.get('/.well-known/assetlinks.json', (_req, res) => {

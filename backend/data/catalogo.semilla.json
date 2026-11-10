@@ -1,0 +1,25 @@
+{
+  "_aviso": "CATÁLOGO SEMILLA para simulación y demos sin gastar cuota de YouTube. Solo se carga con CATALOGO_SEMILLA=true. Ids de videos públicos conocidos; títulos y duraciones son APROXIMADOS (escritos a mano, no consultados a la API). Pasadas 24 h desde la carga, el backend vuelve a validar cada canción contra YouTube al solicitarla.",
+  "canciones": [
+    { "youtube_video_id": "fJ9rUzIMcZQ", "titulo": "Queen – Bohemian Rhapsody (Official Video Remastered)", "artista_canal": "Queen Official", "duracion_segundos": 359, "url_miniatura": "https://i.ytimg.com/vi/fJ9rUzIMcZQ/mqdefault.jpg" },
+    { "youtube_video_id": "Zi_XLOBDo_Y", "titulo": "Michael Jackson - Billie Jean (Official Video)", "artista_canal": "Michael Jackson", "duracion_segundos": 294, "url_miniatura": "https://i.ytimg.com/vi/Zi_XLOBDo_Y/mqdefault.jpg" },
+    { "youtube_video_id": "kJQP7kiw5Fk", "titulo": "Luis Fonsi - Despacito ft. Daddy Yankee", "artista_canal": "Luis Fonsi", "duracion_segundos": 282, "url_miniatura": "https://i.ytimg.com/vi/kJQP7kiw5Fk/mqdefault.jpg" },
+    { "youtube_video_id": "dQw4w9WgXcQ", "titulo": "Rick Astley - Never Gonna Give You Up (Official Music Video)", "artista_canal": "Rick Astley", "duracion_segundos": 213, "url_miniatura": "https://i.ytimg.com/vi/dQw4w9WgXcQ/mqdefault.jpg" },
+    { "youtube_video_id": "JGwWNGJdvx8", "titulo": "Ed Sheeran - Shape of You (Official Music Video)", "artista_canal": "Ed Sheeran", "duracion_segundos": 263, "url_miniatura": "https://i.ytimg.com/vi/JGwWNGJdvx8/mqdefault.jpg" },
+    { "youtube_video_id": "OPf0YbXqDm0", "titulo": "Mark Ronson - Uptown Funk (Official Video) ft. Bruno Mars", "artista_canal": "Mark Ronson", "duracion_segundos": 270, "url_miniatura": "https://i.ytimg.com/vi/OPf0YbXqDm0/mqdefault.jpg" },
+    { "youtube_video_id": "hTWKbfoikeg", "titulo": "Nirvana - Smells Like Teen Spirit (Official Music Video)", "artista_canal": "Nirvana", "duracion_segundos": 301, "url_miniatura": "https://i.ytimg.com/vi/hTWKbfoikeg/mqdefault.jpg" },
+    { "youtube_video_id": "1w7OgIMMRc4", "titulo": "Guns N' Roses - Sweet Child O' Mine (Official Music Video)", "artista_canal": "Guns N' Roses", "duracion_segundos": 356, "url_miniatura": "https://i.ytimg.com/vi/1w7OgIMMRc4/mqdefault.jpg" },
+    { "youtube_video_id": "RgKAFK5djSk", "titulo": "Wiz Khalifa - See You Again ft. Charlie Puth", "artista_canal": "Wiz Khalifa", "duracion_segundos": 237, "url_miniatura": "https://i.ytimg.com/vi/RgKAFK5djSk/mqdefault.jpg" },
+    { "youtube_video_id": "YQHsXMglC9A", "titulo": "Adele - Hello (Official Music Video)", "artista_canal": "Adele", "duracion_segundos": 367, "url_miniatura": "https://i.ytimg.com/vi/YQHsXMglC9A/mqdefault.jpg" },
+    { "youtube_video_id": "60ItHLz5WEA", "titulo": "Alan Walker - Faded", "artista_canal": "Alan Walker", "duracion_segundos": 212, "url_miniatura": "https://i.ytimg.com/vi/60ItHLz5WEA/mqdefault.jpg" },
+    { "youtube_video_id": "CevxZvSJLk8", "titulo": "Katy Perry - Roar (Official)", "artista_canal": "Katy Perry", "duracion_segundos": 270, "url_miniatura": "https://i.ytimg.com/vi/CevxZvSJLk8/mqdefault.jpg" },
+    { "youtube_video_id": "pRpeEdMmmQ0", "titulo": "Shakira - Waka Waka (This Time for Africa)", "artista_canal": "Shakira", "duracion_segundos": 211, "url_miniatura": "https://i.ytimg.com/vi/pRpeEdMmmQ0/mqdefault.jpg" },
+    { "youtube_video_id": "lp-EO5I60KA", "titulo": "Ed Sheeran - Thinking Out Loud (Official Music Video)", "artista_canal": "Ed Sheeran", "duracion_segundos": 297, "url_miniatura": "https://i.ytimg.com/vi/lp-EO5I60KA/mqdefault.jpg" },
+    { "youtube_video_id": "2Vv-BfVoq4g", "titulo": "Ed Sheeran - Perfect (Official Music Video)", "artista_canal": "Ed Sheeran", "duracion_segundos": 280, "url_miniatura": "https://i.ytimg.com/vi/2Vv-BfVoq4g/mqdefault.jpg" },
+    { "youtube_video_id": "hT_nvWreIhg", "titulo": "OneRepublic - Counting Stars (Official Music Video)", "artista_canal": "OneRepublic", "duracion_segundos": 284, "url_miniatura": "https://i.ytimg.com/vi/hT_nvWreIhg/mqdefault.jpg" },
+    { "youtube_video_id": "YykjpeuMNEk", "titulo": "Coldplay - Hymn For The Weekend (Official Video)", "artista_canal": "Coldplay", "duracion_segundos": 261, "url_miniatura": "https://i.ytimg.com/vi/YykjpeuMNEk/mqdefault.jpg" },
+    { "youtube_video_id": "450p7goxZqg", "titulo": "John Legend - All of Me (Official Video)", "artista_canal": "John Legend", "duracion_segundos": 270, "url_miniatura": "https://i.ytimg.com/vi/450p7goxZqg/mqdefault.jpg" },
+    { "youtube_video_id": "e-ORhEE9VVg", "titulo": "Taylor Swift - Blank Space", "artista_canal": "Taylor Swift", "duracion_segundos": 272, "url_miniatura": "https://i.ytimg.com/vi/e-ORhEE9VVg/mqdefault.jpg" },
+    { "youtube_video_id": "9bZkp7q19f0", "titulo": "PSY - GANGNAM STYLE (강남스타일) M/V", "artista_canal": "officialpsy", "duracion_segundos": 252, "url_miniatura": "https://i.ytimg.com/vi/9bZkp7q19f0/mqdefault.jpg" }
+  ]
+}
