@@ -11,7 +11,7 @@ services:
       POSTGRES_PASSWORD: ponga
       POSTGRES_DB: ponga
     ports:
-      - "5433:5432"
+      - "127.0.0.1:5433:5432"   # solo el equipo local: las credenciales son de desarrollo
     volumes:
       - ponga-pgdata:/var/lib/postgresql/data
       - ./docker/crear-base-pruebas.sql:/docker-entrypoint-initdb.d/01-crear-base-pruebas.sql:ro
