@@ -79,6 +79,9 @@ function mapearCanciones(searchItems, videoItems) {
 
 function crearClienteYoutube({ apiKey, fetchImpl = globalThis.fetch, ttlMs = 5 * 60 * 1000, ahora = Date.now } = {}) {
   const cache = new Map();
+  // E4: quien quiera guardar en el catálogo los videos que devuelve la búsqueda se registra aquí.
+  // Sin observadores, la búsqueda se comporta exactamente como en el E3.
+  const observadores = [];
 
   async function getJson(endpoint, params) {
     const url = new URL(`${BASE}/${endpoint}`);
@@ -112,12 +115,30 @@ function crearClienteYoutube({ apiKey, fetchImpl = globalThis.fetch, ttlMs = 5 *
     if (ids.length > 0) {
       const detalles = await getJson('videos', { part: 'snippet,contentDetails,status', id: ids.join(',') });
       canciones = mapearCanciones(busqueda.items, detalles.items || []);
+      avisarObservadores(detalles.items || []);
     }
     cache.set(clave, { t: ahora(), v: canciones });
     return canciones;
   }
 
-  return { buscar };
+  /** Notifica los videos crudos de videos.list. Un fallo del observador nunca rompe la búsqueda. */
+  function avisarObservadores(items) {
+    for (const fn of observadores) {
+      Promise.resolve().then(() => fn(items)).catch((err) => console.error('[catalogo] no se pudo guardar la búsqueda:', err.message));
+    }
+  }
+
+  /**
+   * E4 (validación del catálogo): detalle de un video por id con videos.list (1 unidad de cuota).
+   * Devuelve el item crudo de YouTube o null si el video no existe.
+   */
+  async function obtenerVideo(id) {
+    if (!apiKey) throw new YoutubeError('sin_api_key', 'YOUTUBE_API_KEY no está configurada en backend/.env.', 503);
+    const r = await getJson('videos', { part: 'snippet,contentDetails,status', id });
+    return (r.items || [])[0] || null;
+  }
+
+  return { buscar, obtenerVideo, alObtenerVideos: (fn) => observadores.push(fn) };
 }
 
-module.exports = { YoutubeError, clasificarError, parseDuracionIso, mapearCanciones, crearClienteYoutube };
+module.exports = { YoutubeError, clasificarError, parseDuracionIso, elegirMiniatura, mapearCanciones, crearClienteYoutube };

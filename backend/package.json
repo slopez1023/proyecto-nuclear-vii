@@ -2,18 +2,27 @@
   "name": "nuclear-vii-backend",
   "version": "0.1.0",
   "private": true,
-  "description": "Backend mínimo del Entregable 3 (sesiones/QR, búsqueda YouTube, eventos). Proyecto Nuclear VII.",
+  "description": "Backend del proyecto PONGA (Proyecto Nuclear VII): E3 (sesiones/QR, búsqueda YouTube, eventos) y E4 (solicitudes, votos, cola, reproducción, SSE) con PostgreSQL.",
   "type": "commonjs",
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "start": "node src/server.js",
-    "test": "node --test test/",
+    "test": "node --test",
+    "test:unit": "node --test test/backend.test.js test/contrato-eventos.test.js test/e4-unidad.test.js",
+    "test:integration": "node --test test/e4-esquema.test.js test/e4-solicitudes.test.js test/e4-intervalo.test.js test/e4-reproduccion.test.js test/e4-concurrencia.test.js test/e4-flujo.test.js test/e4-contrato.test.js",
     "test:real": "node --test test-real/youtube.real.js",
+    "migrar": "node scripts/migrar.js",
+    "simular": "node scripts/simular.js",
+    "db:up": "docker compose up -d --wait",
+    "db:down": "docker compose down",
     "qr": "node scripts/generar-qr.js"
   },
   "dependencies": {
     "dotenv": "^16.4.5",
     "express": "^4.21.2",
+    "pg": "^8.23.1",
     "qrcode": "^1.5.4"
   }
 }
