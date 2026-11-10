@@ -70,7 +70,7 @@ class AccesoViewModel(
     /** Deja la sesión disponible para otras pantallas y emite `dispositivo_unido`, una vez por validación exitosa. */
     private suspend fun registrarUnion(estado: AccesoEstado.Valido) {
         val idSesion = estado.sesion.idSesion
-        sesionActiva.actual = SesionActiva(idSesion, estado.dispositivoId)
+        sesionActiva.actual = SesionActiva(idSesion, estado.dispositivoId, estado.sesion.idEstablecimiento)
         val recurrente = dispositivos.marcarUnion()
         eventos.registrar(Evento.DispositivoUnido(idSesion, estado.dispositivoId, recurrente))
     }

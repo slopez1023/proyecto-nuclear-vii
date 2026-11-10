@@ -16,6 +16,12 @@ object Destinos {
     const val BUSCAR = "buscar"
     const val DETALLE = "detalle/{$ARG_VIDEO_ID}"
 
+    /** Cola de reproducción (Entregable 4). Solo existe si hay un repositorio de cola disponible. */
+    const val COLA = "cola"
+
+    /** Confirmación de una solicitud aceptada (Entregable 4). Se abre desde el detalle de la canción. */
+    const val CONFIRMACION = "confirmacion"
+
     fun detalle(youtubeVideoId: String): String = "detalle/$youtubeVideoId"
 
     fun qrInvalido(motivo: MotivoRechazo): String = "qr-invalido/${motivo.codigo}"

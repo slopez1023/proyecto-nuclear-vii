@@ -7,6 +7,8 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStore
 import co.edu.cue.nuclear.cliente.data.busqueda.BusquedaApi
 import co.edu.cue.nuclear.cliente.data.busqueda.BusquedaRepository
+import co.edu.cue.nuclear.cliente.data.cola.ColaRepository
+import co.edu.cue.nuclear.cliente.data.cola.crearColaRepository
 import co.edu.cue.nuclear.cliente.data.crearRetrofit
 import co.edu.cue.nuclear.cliente.data.dispositivo.DispositivoRepository
 import co.edu.cue.nuclear.cliente.data.eventos.EventosApi
@@ -29,6 +31,15 @@ class AppContainer(contexto: Context) {
     val sesiones = SesionRepository(retrofit.create(SesionApi::class.java))
     val busqueda = BusquedaRepository(retrofit.create(BusquedaApi::class.java))
     val sesionActiva = SesionActivaStore()
+
+    /**
+     * Cola de reproducción (E4). `null` = no hay repositorio de cola disponible y la interfaz de cola
+     * y de solicitud no se ofrece. `crearColaRepository` vive en `src/debug` (datos simulados) y en
+     * `src/release` (hoy `null`) y recibe lo que el repositorio real necesitará para armar sus llamadas:
+     * el cliente de red y la sesión activa (idSesion, UUID del dispositivo e idEstablecimiento).
+     * Se declara después de esas dependencias a propósito. Ver docs/entregable-4/mapa-integracion-android.md.
+     */
+    val cola: ColaRepository? = crearColaRepository(contexto, retrofit, sesionActiva)
 
     // Los eventos viven en su propio alcance: no deben cancelarse al cambiar de pantalla.
     private val alcanceEventos = CoroutineScope(SupervisorJob() + Dispatchers.IO)

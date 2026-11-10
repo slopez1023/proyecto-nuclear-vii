@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.dp
 import co.edu.cue.nuclear.cliente.R
 import co.edu.cue.nuclear.cliente.ui.components.BotonPrincipal
 import co.edu.cue.nuclear.cliente.ui.components.Brand
+import co.edu.cue.nuclear.cliente.ui.components.BotonSecundario
 import co.edu.cue.nuclear.cliente.ui.components.NuclearIcon
 import co.edu.cue.nuclear.cliente.ui.components.NuclearScreen
 import co.edu.cue.nuclear.cliente.ui.components.SimboloIcono
@@ -36,15 +37,15 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.runtime.remember
 
 /**
- * Pantalla "inicio" de Figma, reducida al alcance del Entregable 3: solo el acceso a la búsqueda.
- * "Ahora suena" y "Mi solicitud" pertenecen al Entregable 4.
+ * Pantalla "inicio" de Figma: acceso a la búsqueda (E3) y, si hay cola disponible, a la cola (E4, [onVerCola]).
+ * "Ahora suena" y "Mi solicitud" como bloques propios del inicio siguen sin implementarse.
  *
  * Composición: marca arriba, bloque central (símbolo, título, descripción) centrado en vertical y, en la
  * zona del pulgar, un formulario de búsqueda formado por la entrada y el botón. La entrada no se puede
  * escribir: es un acceso a Buscar igual que el botón, que es la única acción primaria (relleno sólido).
  */
 @Composable
-fun InicioScreen(onBuscar: () -> Unit, modifier: Modifier = Modifier) {
+fun InicioScreen(onBuscar: () -> Unit, modifier: Modifier = Modifier, onVerCola: (() -> Unit)? = null) {
     NuclearScreen(
         modifier = modifier,
         scrollable = true,
@@ -54,6 +55,8 @@ fun InicioScreen(onBuscar: () -> Unit, modifier: Modifier = Modifier) {
         footer = {
             EntradaBusqueda("Canción, artista o canal", onBuscar, Modifier.aparicion(3))
             BotonPrincipal("Buscar una canción", onBuscar, Modifier.aparicion(4))
+            // E4: acceso a la cola. Secundario para mantener una sola acción primaria. Se omite si no hay cola disponible.
+            if (onVerCola != null) BotonSecundario("Ver la cola", onVerCola, Modifier.aparicion(5))
         },
     ) {
         SimboloIcono(

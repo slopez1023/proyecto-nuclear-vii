@@ -86,7 +86,7 @@ class AccesoViewModelTest {
 
         val estado = vm.estadoFinal() as AccesoEstado.Valido
 
-        assertEquals(Sesion("SES-1", "Bar Demo", provisional = true), estado.sesion)
+        assertEquals(Sesion("SES-1", "Bar Demo", provisional = true, idEstablecimiento = "EST-1"), estado.sesion)
         assertEquals(dispositivos.obtenerId(), estado.dispositivoId)
     }
 
@@ -146,7 +146,7 @@ class AccesoViewModelTest {
         val estado = vm.estadoFinal() as AccesoEstado.Valido
 
         assertEquals(listOf<Evento>(Evento.DispositivoUnido("SES-1", estado.dispositivoId, recurrente = false)), eventos.eventos)
-        assertEquals(SesionActiva("SES-1", estado.dispositivoId), sesionActiva.actual)
+        assertEquals(SesionActiva("SES-1", estado.dispositivoId, idEstablecimiento = "EST-1"), sesionActiva.actual)
     }
 
     @Test

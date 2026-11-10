@@ -19,6 +19,10 @@ import androidx.compose.ui.unit.dp
 import co.edu.cue.nuclear.cliente.R
 import co.edu.cue.nuclear.cliente.data.busqueda.Cancion
 import co.edu.cue.nuclear.cliente.ui.components.BarraSuperior
+import co.edu.cue.nuclear.cliente.ui.components.BotonPrincipal
+import co.edu.cue.nuclear.cliente.ui.components.BotonSecundario
+import co.edu.cue.nuclear.cliente.ui.components.MensajeOperacion
+import co.edu.cue.nuclear.cliente.ui.components.MensajeUi
 import co.edu.cue.nuclear.cliente.ui.components.EstadoVacio
 import co.edu.cue.nuclear.cliente.ui.components.Insignia
 import co.edu.cue.nuclear.cliente.ui.components.MiniaturaCancion
@@ -33,14 +37,23 @@ import co.edu.cue.nuclear.cliente.ui.components.aparicion
 
 /**
  * Pantalla "detalle" de Figma: información y miniatura de la canción (B05).
- * La acción de solicitar la canción pertenece al Entregable 4 y no se incluye.
+ * Solicitar la canción (E4) aparece solo si se pasa [onSolicitar], es decir, si hay cola disponible.
  *
  * La flecha de volver usa el mismo retroceso que el gesto del sistema (el despachador de "atrás" de la
  * actividad), que `NavHost` ya intercepta: no requiere cambiar la navegación.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun DetalleScreen(cancion: Cancion?, modifier: Modifier = Modifier) {
+fun DetalleScreen(
+    cancion: Cancion?,
+    modifier: Modifier = Modifier,
+    onSolicitar: (() -> Unit)? = null,
+    solicitando: Boolean = false,
+    mensaje: MensajeUi? = null,
+    onCerrarMensaje: () -> Unit = {},
+    onVerCola: (() -> Unit)? = null,
+    estadoEnCola: EstadoCancionEnCola = EstadoCancionEnCola.Desconocido,
+) {
     val despachadorAtras = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
 
     NuclearScreen(
@@ -52,6 +65,28 @@ fun DetalleScreen(cancion: Cancion?, modifier: Modifier = Modifier) {
                 descripcionVolver = "Volver a resultados",
                 onVolver = { despachadorAtras?.onBackPressed() },
             )
+        },
+        // E4: solicitar la canción. Solo si hay cola disponible y la canción se puede reproducir.
+        footer = if (cancion != null && onSolicitar != null) {
+            {
+                mensaje?.let { MensajeOperacion(it, onCerrar = onCerrarMensaje) }
+                if (estadoEnCola.yaEstaEnLaCola) {
+                    // Ya hay una solicitud pendiente o suena: no se ofrece otra desde aquí. Es solo una pista con la
+                    // última cola recibida; el servidor sigue decidiendo qué se acepta.
+                    if (onVerCola != null) BotonPrincipal("Ver la cola", onVerCola)
+                } else {
+                    if (cancion.disponible) {
+                        BotonPrincipal(
+                            texto = if (solicitando) "Enviando solicitud…" else "Solicitar esta canción",
+                            onClick = onSolicitar,
+                            habilitado = !solicitando,
+                        )
+                    }
+                    if (onVerCola != null) BotonSecundario("Ver la cola", onVerCola)
+                }
+            }
+        } else {
+            null
         },
     ) {
         if (cancion == null) {
@@ -70,7 +105,8 @@ fun DetalleScreen(cancion: Cancion?, modifier: Modifier = Modifier) {
             Modifier
                 .aparicion(0)
                 .fillMaxWidth()
-                .aspectRatio(16f / 9f)
+                // Con la tarjeta de estado en la cola la miniatura es algo más baja, para que quepa todo sin desplazar.
+                .aspectRatio(if (estadoEnCola.textos() != null) 2f else 16f / 9f)
                 .clip(forma)
                 .border(1.dp, NuclearColors.Line, forma),
         ) {
@@ -99,5 +135,8 @@ fun DetalleScreen(cancion: Cancion?, modifier: Modifier = Modifier) {
                 Insignia("No disponible", tono = TonoVisual.Aviso, conPunto = true)
             }
         }
+
+        // Estado de la canción en la cola (en la cola, solicitada por ti o sonando); no aparece si está disponible.
+        TarjetaEstadoEnCola(estadoEnCola, Modifier.aparicion(3))
     }
 }
