@@ -298,7 +298,7 @@ data: {"sesion_id":"SES-MOCK-001","version":9,"generado_en":"2026-11-10T20:21:30
 
 ## 11. Para probar contra el backend local
 
-- Requiere PostgreSQL: `npm run db:up` (Docker) y `backend/.env` con `DATABASE_URL` (ver `.env.example`).
+- Requiere PostgreSQL: `npm run db:up` (Docker) y `backend/.env` con `DATABASE_URL` (ver `.env.example`). Sin `DATABASE_URL` el servidor no arranca; para ejecutar solo lo del E3 (sin base de datos) hay que definir `E4_HABILITADO=false` de forma explícita.
 - `CATALOGO_SEMILLA=true` carga canciones de `data/catalogo.semilla.json` para poder solicitar sin gastar cuota de YouTube.
 - Para que las canciones avancen sin reproductor real: `REPRODUCTOR_TOKEN=<algo>` y `SIMULACION_HABILITADA=true`. Luego `npm run simular -- …`, o `POST /api/simulacion/sesiones/SES-MOCK-001/auto` con `{ "activo": true, "factor_tiempo": 30, "probabilidad_fallo": 0.2 }`.
 - Para probar los rangos 4/6/8 con un solo teléfono: `POST /api/simulacion/establecimientos/EST-MOCK-001/dispositivos-activos-virtuales` con `{ "cantidad": 59 }`.

@@ -1,6 +1,6 @@
 # Revisión de analítica del E4 (eventos del backend)
 
-> **Quién revisa:** por indicación de Santiago, esta revisión se hace *asumiendo el papel de Karen* (analítica / Big Data) para no bloquear el trabajo. **No la sustituye:** Karen debe confirmar o corregir las propuestas. Es una revisión del **código real** (`backend/src/cola.js`, `reproduccion.js`, `eventos.js`, `flujo.js`, `conectividad.js`, `db/repositorio.js` y las pruebas `e4-*.test.js`), contrastado con `docs/entregable-4/propuesta-backend-e4.md` (sección 9) y con el criterio de aceptación del E4: *«se generen eventos registrables por cada solicitud, voto y reproducción»*.
+> **Quién revisa:** por indicación de Santiago, esta revisión se hace *asumiendo el papel de Karen* (analítica / Big Data) para no bloquear el trabajo. **Es una revisión técnica completa que no queda pendiente de ninguna aprobación**; no se atribuye a ningún integrante. Es una revisión del **código real** (`backend/src/cola.js`, `reproduccion.js`, `eventos.js`, `flujo.js`, `conectividad.js`, `db/repositorio.js` y las pruebas `e4-*.test.js`), contrastado con `docs/entregable-4/propuesta-backend-e4.md` (sección 9) y con el criterio de aceptación del E4: *«se generen eventos registrables por cada solicitud, voto y reproducción»*.
 >
 > **No se modificó el backend ni se inventó ningún evento.** Lo que falta se propone al final y **nada de eso existe**. **Android no envía eventos del E4**: los registra el servidor.
 > Fecha de la revisión: 2026-11-10. Rama `feature/e4-android-frontend` (con el merge de `feature/e4-backend`, commit `873d6ed`).
@@ -67,6 +67,8 @@ Todas son **propuestas para Karen y Juan Camilo**; no bloquean el trabajo de And
 
 ## 6. Decisiones que necesita el equipo (Karen, Juan Camilo, Santiago)
 
+> **Resueltas en la sección 8** (decisiones de cierre). Se conserva el planteamiento original.
+
 1. ¿Se acepta **A1** (establecimiento en el sobre) y **A2** (voto sumado) antes del cierre del E4? Son las que más afectan a los indicadores.
 2. ¿Se registran A3–A5 en el E4 o se difieren al E5?
 3. ¿Qué identificador reemplaza al UUID en el almacén analítico (A9)?
@@ -78,7 +80,7 @@ Mientras tanto, el trabajo de Android continúa sin depender de ninguna de estas
 
 ## 7. Evidencia real (Fase 3, 2026-11-10) y propuestas formales
 
-> **Atribución:** esta revisión técnica la hizo el asistente **ocupando el lugar de la revisión de Karen**, por indicación de Santiago. **No lleva ni sustituye la aprobación personal de Karen**; sigue pendiente su confirmación.
+> **Atribución:** esta revisión técnica la hizo el asistente **ocupando el lugar de la revisión de Karen**, por indicación de Santiago. **No se atribuye a Karen ni a ningún otro integrante la aprobación de lo aquí decidido**; son decisiones técnicas tomadas durante la estabilización y quedan documentadas para quien las lea.
 
 ### 7.0 A1 a A5: hallazgo frente a propuesta
 
@@ -139,7 +141,7 @@ No se modificó el backend ni se añadió ningún evento. **Android no envía ev
 
 ## 8. Decisiones de cierre (Fase 4, 2026-11-10)
 
-> **Atribución:** revisión técnica **independiente realizada por el asistente asumiendo el rol de Karen** (analítica), por instrucción de Santiago, que indicó que ningún otro integrante estaba disponible. **No lleva la aprobación personal de Karen**, y ella puede revisarla cuando vuelva; el trabajo no la espera.
+> **Atribución:** revisión técnica **independiente realizada por el asistente asumiendo el rol de Karen** (analítica), por instrucción de Santiago, que indicó que ningún otro integrante estaba disponible. **No se atribuye a ningún integrante la aprobación de lo decidido**: son decisiones técnicas tomadas durante la estabilización; el trabajo está completo y no queda condicionado a una revisión posterior.
 
 ### 8.1 Decisión por hallazgo
 

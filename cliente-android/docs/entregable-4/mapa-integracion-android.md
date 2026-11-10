@@ -222,3 +222,5 @@ No hubo cambios de código de Android en esta fase. Se validó el mapa completo 
 **Backend (rama `feature/e4-backend`, ya integrada):** regla única de canción permitida (`youtube.js`), regla de inactividad (`comun-e4.js`, `cola.js`), voto sobre la que suena (`cola.js`), acceso por QR desde PostgreSQL (`sesiones.js`, `app.js`), aviso de cierre (`flujo.js`), sobre y eventos (`eventos.js`, `reproduccion.js`), migración `002`.
 
 **Instrumentadas:** `connectedDebugAndroidTest` no funciona aquí (Gradle no puede descargar `gradle-work-action` por el certificado). Se ejecuta con: `./gradlew assembleDebug assembleDebugAndroidTest`, `adb install -r` de ambos APK y `adb shell am instrument -w co.edu.cue.nuclear.cliente.test/androidx.test.runner.AndroidJUnitRunner`. Resultado: 4/4. **No hay pruebas de Compose** (`ui-test-junit4` no se puede descargar).
+
+**Arranque del backend sin PostgreSQL (solo E3):** `E4_HABILITADO=false` (explícito). Sin esa variable y sin `DATABASE_URL`, el servidor no arranca. Con ese modo la app Android no tiene cola ni solicitudes (las rutas del E4 responden 404).

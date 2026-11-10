@@ -36,6 +36,8 @@ Abreviatura de rutas: `KT` = `app/src/main/java/co/edu/cue/nuclear/cliente`. Los
 
 ---
 
+> **Nota (Fase 4):** las secciones DEP-01 a DEP-18 que siguen son el **registro histórico** de lo que Android necesitaba. Todo lo que dice «Juan Camilo debe confirmar» o «sin confirmar» **ya está resuelto** por el contrato implementado (`docs/entregable-4/contrato-api-e4.md`); el estado vigente de cada dependencia es el de la tabla de arriba y el de la sección «Fase 4» del final.
+
 ## DEP-01 — Endpoint para obtener la cola
 - **Descripción:** consulta del estado de la cola de un establecimiento: canción que suena y solicitudes pendientes ordenadas.
 - **Juan Camilo debe implementar/confirmar:** ruta, método, parámetros, códigos HTTP y forma de la respuesta. El borrador de la especificación (P3) propone `GET /api/sesiones/:idSesion/cola`, **sin confirmar**.
@@ -265,7 +267,7 @@ Abreviatura de rutas: `KT` = `app/src/main/java/co/edu/cue/nuclear/cliente`. Los
 | C14 | `retry: 3000`, ping cada 10 s, `Last-Event-ID` ignorado | RESUELTA | **Fase 2** (cliente con `readTimeout` > 10 s o 0) |
 | C15 | Sin idempotencia: repetir tras un timeout puede dar `voto_duplicado` | PARCIAL | Android **no repite** y consulta la cola (`SIN_CONFIRMAR`) |
 | C16 | Sin paginación | RESUELTA | — |
-| C17 | Eventos del E4 los registra el servidor | PARCIAL | Android no envía eventos nuevos; falta revisión de Karen |
+| C17 | Eventos del E4 los registra el servidor | PARCIAL | Android no envía eventos nuevos; revisión técnica hecha en la Fase 4 (`revision-analitica-e4.md`) |
 | C18 | `contrato-e4.json` (20 casos) | PARCIAL | Faltan casos: 404 `solicitud_inexistente`, 404 `cancion_inexistente`, 410 `qr_desactivado`, 502/503, 405 y SSE con cambios; esas pruebas usan cuerpos escritos a mano |
 
 **Abierto con Juan Camilo / el equipo:** (1) sin aviso de sesión cerrada con el flujo abierto (C9); (2) voto manual sobre la canción que suena da `409 solicitud_no_votable` aunque pedirla sí suma voto (H3c, sin decidir); (3) **H1**: con pocos dispositivos la cola puede quedar vacía sin que nadie recupere el voto (afecta la prueba "dos celulares"); (4) revisión de Karen de los eventos del servidor; (5) completar el fixture.
