@@ -2,6 +2,7 @@ name: Backend
 
 # Ejecuta las pruebas del backend con YouTube SIMULADO. No usa secretos: las pruebas reales
 # (`npm run test:real`) consumen cuota de YouTube y se ejecutan solo de forma manual en un equipo con backend/.env.
+# Las pruebas del E4 necesitan PostgreSQL real: se levanta como servicio (misma versión que docker-compose.yml).
 on:
   push:
     branches: [develop, main]
@@ -26,6 +27,23 @@ jobs:
     name: Pruebas del backend
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          # Credenciales solo para este contenedor efímero del runner (no son secretos)
+          POSTGRES_USER: ponga
+          POSTGRES_PASSWORD: ponga
+          POSTGRES_DB: ponga_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ponga -d ponga_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL_TEST: postgres://ponga:ponga@localhost:5432/ponga_test
     defaults:
       run:
         working-directory: backend
@@ -49,5 +67,5 @@ jobs:
       - name: Instalar dependencias
         run: npm ci
 
-      - name: Pruebas (unitarias, HTTP y contrato de eventos)
+      - name: Pruebas (unitarias, HTTP, contratos de eventos y del E4, integración con PostgreSQL)
         run: npm test
