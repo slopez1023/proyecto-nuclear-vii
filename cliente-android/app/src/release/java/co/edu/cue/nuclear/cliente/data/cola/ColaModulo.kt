@@ -2,12 +2,15 @@ package co.edu.cue.nuclear.cliente.data.cola
 
 import android.content.Context
 import co.edu.cue.nuclear.cliente.data.sesion.SesionActivaStore
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import retrofit2.Retrofit
 
 /**
- * Variante RELEASE: todavía no hay repositorio real de la cola (depende de DEP-01 a DEP-04), y los
- * datos simulados no existen en esta variante. Devolver `null` hace que la app no ofrezca cola ni
- * solicitud. Cuando exista `ColaRepositoryReal`, se crea aquí.
+ * Variante RELEASE: usa exclusivamente el repositorio real y el flujo SSE real. Los datos simulados no existen en esta variante.
  */
 @Suppress("UNUSED_PARAMETER")
-fun crearColaRepository(contexto: Context, retrofit: Retrofit, sesionActiva: SesionActivaStore): ColaRepository? = null
+fun crearColaRepository(contexto: Context, retrofit: Retrofit, sesionActiva: SesionActivaStore): ColaRepository? =
+    ColaRepositoryReal(retrofit.create(ColaApi::class.java), sesionActiva)
+
+fun crearColaEnVivo(baseUrl: String, sesionActiva: SesionActivaStore): ColaEnVivo? =
+    ColaEnVivoSse(ColaEnVivoSse.crearClienteSse(), baseUrl.toHttpUrl(), sesionActiva)

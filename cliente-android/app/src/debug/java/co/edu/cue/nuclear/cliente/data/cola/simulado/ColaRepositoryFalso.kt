@@ -53,11 +53,15 @@ class ColaRepositoryFalso(
     private var siguienteId = 100
     private var entradas: List<Entrada> = estadoInicial.cola.map { Entrada(it, siguienteLlegada++) }
 
+    /** Versión simulada: crece con cada cambio, como la del servidor, para ejercitar el descarte de estados viejos. */
+    private var version = 1L
+
     /** Vuelve a un estado inicial (cola y canción actual), olvidando lo solicitado y votado hasta ahora. */
     suspend fun reiniciar(estado: EstadoCola) = mutex.withLock {
         reproduccion = estado.reproduccionActual
         siguienteLlegada = 0L
         entradas = estado.cola.map { Entrada(it, siguienteLlegada++) }
+        version++
     }
 
     override suspend fun obtenerCola(): ResultadoCola = mutex.withLock {
@@ -74,15 +78,16 @@ class ColaRepositoryFalso(
         // Regla 1B: si la canción ya espera o suena, no se duplica: se suma un voto.
         val existente = entradas.firstOrNull { it.solicitud.cancion.youtubeVideoId == cancion.youtubeVideoId }
         if (existente != null) {
-            if (existente.solicitud.miVoto != null) {
+            if (existente.solicitud.yaVoto) {
                 return ResultadoSolicitud.Rechazada(MotivoRechazoOperacion.VOTO_DUPLICADO)
             }
             val actualizada = existente.solicitud.copy(
                 totalVotos = existente.solicitud.totalVotos + 1,
-                miVoto = TipoVoto.AUTOMATICO,
+                yaVoto = true,
             )
             reemplazar(existente, actualizada)
-            return ResultadoSolicitud.Aceptada(buscar(actualizada.idSolicitud), sumoVotoAExistente = true)
+            version++
+            return ResultadoSolicitud.Aceptada(buscar(actualizada.idSolicitud), sumoVotoAExistente = true, origenVoto = TipoVoto.AUTOMATICO)
         }
         if (reproduccion?.cancion?.youtubeVideoId == cancion.youtubeVideoId) {
             // Suena ahora: la solicitud se acepta sumando un voto a la que suena, que no vuelve a la cola.
@@ -93,10 +98,11 @@ class ColaRepositoryFalso(
                 posicion = null,
                 totalVotos = 1,
                 esMia = false,
-                miVoto = TipoVoto.AUTOMATICO,
+                yaVoto = true,
                 esperaEstimadaSegundos = null,
             )
-            return ResultadoSolicitud.Aceptada(sonando, sumoVotoAExistente = true)
+            version++
+            return ResultadoSolicitud.Aceptada(sonando, sumoVotoAExistente = true, origenVoto = TipoVoto.AUTOMATICO)
         }
 
         val nueva = SolicitudCola(
@@ -106,11 +112,12 @@ class ColaRepositoryFalso(
             posicion = null,
             totalVotos = 1,
             esMia = true,
-            miVoto = TipoVoto.AUTOMATICO,
+            yaVoto = true,
             esperaEstimadaSegundos = null,
         )
         entradas = ordenar(entradas + Entrada(nueva, siguienteLlegada++))
-        ResultadoSolicitud.Aceptada(buscar(nueva.idSolicitud), sumoVotoAExistente = false)
+        version++
+        ResultadoSolicitud.Aceptada(buscar(nueva.idSolicitud), sumoVotoAExistente = false, origenVoto = TipoVoto.AUTOMATICO)
     }
 
     override suspend fun votar(idSolicitud: String): ResultadoVoto = mutex.withLock {
@@ -123,15 +130,16 @@ class ColaRepositoryFalso(
         if (entrada.solicitud.estado != EstadoSolicitud.PENDIENTE) {
             return ResultadoVoto.Rechazado(MotivoRechazoOperacion.SOLICITUD_NO_VOTABLE)
         }
-        if (entrada.solicitud.miVoto != null) {
+        if (entrada.solicitud.yaVoto) {
             return ResultadoVoto.Rechazado(MotivoRechazoOperacion.VOTO_DUPLICADO)
         }
         val actualizada = entrada.solicitud.copy(
             totalVotos = entrada.solicitud.totalVotos + 1,
-            miVoto = TipoVoto.MANUAL,
+            yaVoto = true,
         )
         reemplazar(entrada, actualizada)
-        ResultadoVoto.Registrado(buscar(idSolicitud))
+        version++
+        ResultadoVoto.Registrado(buscar(idSolicitud), origenVoto = TipoVoto.MANUAL)
     }
 
     private suspend fun pausa() {
@@ -150,5 +158,5 @@ class ColaRepositoryFalso(
     private fun buscar(idSolicitud: String): SolicitudCola =
         entradas.first { it.solicitud.idSolicitud == idSolicitud }.solicitud
 
-    private fun instantanea() = EstadoCola(reproduccion, entradas.map { it.solicitud })
+    private fun instantanea() = EstadoCola(reproduccion, entradas.map { it.solicitud }, version = version)
 }

@@ -21,6 +21,8 @@ import co.edu.cue.nuclear.cliente.data.busqueda.Cancion
 import co.edu.cue.nuclear.cliente.ui.components.BarraSuperior
 import co.edu.cue.nuclear.cliente.ui.components.BotonPrincipal
 import co.edu.cue.nuclear.cliente.ui.components.BotonSecundario
+import co.edu.cue.nuclear.cliente.data.cola.MiVotacion
+import co.edu.cue.nuclear.cliente.ui.components.InfoVotacion
 import co.edu.cue.nuclear.cliente.ui.components.MensajeOperacion
 import co.edu.cue.nuclear.cliente.ui.components.MensajeUi
 import co.edu.cue.nuclear.cliente.ui.components.EstadoVacio
@@ -53,6 +55,8 @@ fun DetalleScreen(
     onCerrarMensaje: () -> Unit = {},
     onVerCola: (() -> Unit)? = null,
     estadoEnCola: EstadoCancionEnCola = EstadoCancionEnCola.Desconocido,
+    /** `mi_votacion` de la última cola: si aún no puede pedir, se le avisa antes de pulsar «Solicitar». */
+    votacion: MiVotacion? = null,
 ) {
     val despachadorAtras = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
 
@@ -75,6 +79,7 @@ fun DetalleScreen(
                     // última cola recibida; el servidor sigue decidiendo qué se acepta.
                     if (onVerCola != null) BotonPrincipal("Ver la cola", onVerCola)
                 } else {
+                    if (cancion.disponible && votacion != null && !votacion.puedeVotar) InfoVotacion(votacion)
                     if (cancion.disponible) {
                         BotonPrincipal(
                             texto = if (solicitando) "Enviando solicitud…" else "Solicitar esta canción",

@@ -6,7 +6,6 @@ import co.edu.cue.nuclear.cliente.data.cola.EstadoSolicitud
 import co.edu.cue.nuclear.cliente.data.cola.ReproduccionActual
 import co.edu.cue.nuclear.cliente.data.cola.SolicitudCola
 import co.edu.cue.nuclear.cliente.data.cola.TipoErrorCola
-import co.edu.cue.nuclear.cliente.data.cola.TipoVoto
 import co.edu.cue.nuclear.cliente.ui.components.TonoVisual
 import co.edu.cue.nuclear.cliente.ui.screens.cola.CargaCola
 import org.junit.Assert.assertEquals
@@ -23,9 +22,9 @@ class EstadoCancionEnColaTest {
     private fun solicitud(
         video: String,
         esMia: Boolean = false,
-        miVoto: TipoVoto? = null,
+        yaVoto: Boolean = false,
         estado: EstadoSolicitud = EstadoSolicitud.PENDIENTE,
-    ) = SolicitudCola("S-$video", cancion(video), estado, 2, 3, esMia, miVoto, 420)
+    ) = SolicitudCola("S-$video", cancion(video), estado, 2, 3, esMia, yaVoto, 420)
 
     private val suena = ReproduccionActual("S0", cancion("SUENA"), 134)
 
@@ -71,7 +70,7 @@ class EstadoCancionEnColaTest {
 
     @Test
     fun `una solicitud pendiente de este dispositivo se reconoce como solicitada por ti`() {
-        val estado = estadoDeCancionEnCola(cola(solicitud("A", esMia = true, miVoto = TipoVoto.AUTOMATICO)), "A")
+        val estado = estadoDeCancionEnCola(cola(solicitud("A", esMia = true, yaVoto = true)), "A")
 
         assertTrue(estado is EstadoCancionEnCola.SolicitadaPorTi)
         assertTrue(estado.yaEstaEnLaCola)
@@ -120,8 +119,8 @@ class EstadoCancionEnColaTest {
 
     @Test
     fun `solicitada por ti solo afirma el voto automatico si el repositorio lo informo`() {
-        val conAutomatico = EstadoCancionEnCola.SolicitadaPorTi(solicitud("A", esMia = true, miVoto = TipoVoto.AUTOMATICO)).textos()!!
-        val sinVoto = EstadoCancionEnCola.SolicitadaPorTi(solicitud("A", esMia = true, miVoto = null)).textos()!!
+        val conAutomatico = EstadoCancionEnCola.SolicitadaPorTi(solicitud("A", esMia = true, yaVoto = true)).textos()!!
+        val sinVoto = EstadoCancionEnCola.SolicitadaPorTi(solicitud("A", esMia = true, yaVoto = false)).textos()!!
 
         assertEquals("Solicitada por ti", conAutomatico.insignia)
         assertEquals("Incluye tu voto automático.", conAutomatico.detalle)
@@ -131,7 +130,7 @@ class EstadoCancionEnColaTest {
     @Test
     fun `una pendiente de otra persona distingue si ya votaste`() {
         val sinVoto = EstadoCancionEnCola.Pendiente(solicitud("A")).textos()!!
-        val votada = EstadoCancionEnCola.Pendiente(solicitud("A", miVoto = TipoVoto.MANUAL)).textos()!!
+        val votada = EstadoCancionEnCola.Pendiente(solicitud("A", yaVoto = true)).textos()!!
 
         assertEquals("En la cola", sinVoto.insignia)
         assertEquals("Para apoyarla con un voto, ve a la cola.", sinVoto.detalle)
@@ -142,7 +141,7 @@ class EstadoCancionEnColaTest {
     fun `los textos no afirman reglas de elegibilidad que decide el servidor`() {
         val todos = listOf(
             EstadoCancionEnCola.Sonando(suena),
-            EstadoCancionEnCola.SolicitadaPorTi(solicitud("A", esMia = true, miVoto = TipoVoto.AUTOMATICO)),
+            EstadoCancionEnCola.SolicitadaPorTi(solicitud("A", esMia = true, yaVoto = true)),
             EstadoCancionEnCola.Pendiente(solicitud("A")),
         ).mapNotNull { it.textos() }.joinToString(" ") { "${it.titulo} ${it.detalle.orEmpty()}" }.lowercase()
 

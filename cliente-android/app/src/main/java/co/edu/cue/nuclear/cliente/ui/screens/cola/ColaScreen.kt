@@ -34,6 +34,7 @@ import co.edu.cue.nuclear.cliente.ui.components.MensajeOperacion
 import co.edu.cue.nuclear.cliente.ui.components.NuclearScreen
 import co.edu.cue.nuclear.cliente.ui.components.TarjetaAhoraSuena
 import co.edu.cue.nuclear.cliente.ui.components.TonoVisual
+import co.edu.cue.nuclear.cliente.ui.components.InfoVotacion
 import co.edu.cue.nuclear.cliente.ui.components.aMensaje
 import co.edu.cue.nuclear.cliente.ui.theme.NuclearColors
 import co.edu.cue.nuclear.cliente.ui.theme.NuclearSpacing
@@ -145,6 +146,7 @@ private fun Contenido(
     destacada: String?,
     onBuscar: (() -> Unit)?,
 ) {
+    val puedeVotarAhora = cola.miVotacion?.puedeVotar ?: true
     // Lleva la vista a la solicitud destacada una sola vez, aunque esté al final de la lista.
     val requester = remember { BringIntoViewRequester() }
     var yaDesplazada by rememberSaveable(destacada) { mutableStateOf(false) }
@@ -157,6 +159,8 @@ private fun Contenido(
     }
 
     cola.reproduccionActual?.let { TarjetaAhoraSuena(it) }
+    // F4: cuándo podrá volver a pedir o votar (dato del servidor; no se calcula aquí).
+    cola.miVotacion?.let { InfoVotacion(it) }
 
     Text(
         "En espera",
@@ -182,6 +186,7 @@ private fun Contenido(
             modifier = if (solicitud.idSolicitud == destacada) Modifier.bringIntoViewRequester(requester) else Modifier,
             proporcionPopularidad = solicitud.totalVotos / maximo,
             resaltada = solicitud.idSolicitud == destacada,
+            puedeVotarAhora = puedeVotarAhora,
         )
     }
 }

@@ -11,7 +11,6 @@ import co.edu.cue.nuclear.cliente.data.cola.ResultadoSolicitud
 import co.edu.cue.nuclear.cliente.data.cola.ResultadoVoto
 import co.edu.cue.nuclear.cliente.data.cola.SolicitudCola
 import co.edu.cue.nuclear.cliente.data.cola.TipoErrorCola
-import co.edu.cue.nuclear.cliente.data.cola.TipoVoto
 import co.edu.cue.nuclear.cliente.ui.components.TonoVisual
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -38,12 +37,12 @@ class ColaViewModelTest {
     private fun solicitud(
         id: String,
         votos: Int = 1,
-        miVoto: TipoVoto? = null,
+        yaVoto: Boolean = false,
         esMia: Boolean = false,
-    ) = SolicitudCola(id, cancion(id), EstadoSolicitud.PENDIENTE, 1, votos, esMia, miVoto, null)
+    ) = SolicitudCola(id, cancion(id), EstadoSolicitud.PENDIENTE, 1, votos, esMia, yaVoto, null)
 
     private val suena = ReproduccionActual("S0", cancion("S0"), 100)
-    private val conCola = EstadoCola(suena, listOf(solicitud("A", 2, TipoVoto.AUTOMATICO, esMia = true), solicitud("B")))
+    private val conCola = EstadoCola(suena, listOf(solicitud("A", 2, true, esMia = true), solicitud("B")))
 
     /** Repositorio controlable: cuenta llamadas y permite dejar una operación "en camino". */
     private class RepoControlable : ColaRepository {
@@ -199,8 +198,8 @@ class ColaViewModelTest {
     @Test
     fun `un voto registrado confirma, libera el boton y vuelve a pedir la cola`() = runTest {
         abrir()
-        val votada = solicitud("B", votos = 2, miVoto = TipoVoto.MANUAL)
-        val despues = EstadoCola(suena, listOf(votada, solicitud("A", 2, TipoVoto.AUTOMATICO, true)))
+        val votada = solicitud("B", votos = 2, yaVoto = true)
+        val despues = EstadoCola(suena, listOf(votada, solicitud("A", 2, true, true)))
         repo.respuestaVoto = ResultadoVoto.Registrado(votada)
         repo.respuestaCola = ResultadoCola.Exito(despues)
         val consultasAntes = repo.consultas
@@ -219,7 +218,7 @@ class ColaViewModelTest {
     @Test
     fun `si no se puede refrescar tras votar se aplica la solicitud devuelta`() = runTest {
         abrir()
-        val votada = solicitud("B", votos = 2, miVoto = TipoVoto.MANUAL)
+        val votada = solicitud("B", votos = 2, yaVoto = true)
         repo.respuestaVoto = ResultadoVoto.Registrado(votada)
         repo.respuestaCola = ResultadoCola.Error(TipoErrorCola.CONEXION)
 
@@ -228,7 +227,7 @@ class ColaViewModelTest {
 
         val b = exito().estado.cola.first { it.idSolicitud == "B" }
         assertEquals(2, b.totalVotos)
-        assertEquals(TipoVoto.MANUAL, b.miVoto)
+        assertEquals(true, b.yaVoto)
     }
 
     @Test
@@ -295,7 +294,7 @@ class ColaViewModelTest {
 
     @Test
     fun `una solicitud aceptada abre la confirmacion y vuelve a pedir la cola`() = runTest {
-        repo.respuestaSolicitud = ResultadoSolicitud.Aceptada(solicitud("N", 1, TipoVoto.AUTOMATICO, true), false)
+        repo.respuestaSolicitud = ResultadoSolicitud.Aceptada(solicitud("N", 1, true, true), false)
 
         vm.solicitar(cancion("N"))
         runCurrent()
@@ -311,13 +310,13 @@ class ColaViewModelTest {
 
     @Test
     fun `una solicitud nueva se distingue de una que sumo un voto a una existente`() = runTest {
-        repo.respuestaSolicitud = ResultadoSolicitud.Aceptada(solicitud("N", 1, TipoVoto.AUTOMATICO, true), sumoVotoAExistente = false)
+        repo.respuestaSolicitud = ResultadoSolicitud.Aceptada(solicitud("N", 1, true, true), sumoVotoAExistente = false)
         vm.solicitar(cancion("N"))
         runCurrent()
         assertEquals(false, vm.estado.value.confirmacion?.sumoVotoAExistente)
 
         vm.cerrarConfirmacion()
-        repo.respuestaSolicitud = ResultadoSolicitud.Aceptada(solicitud("B", 3, TipoVoto.AUTOMATICO), sumoVotoAExistente = true)
+        repo.respuestaSolicitud = ResultadoSolicitud.Aceptada(solicitud("B", 3, true), sumoVotoAExistente = true)
         vm.solicitar(cancion("B"))
         runCurrent()
         assertEquals(true, vm.estado.value.confirmacion?.sumoVotoAExistente)
@@ -326,7 +325,7 @@ class ColaViewModelTest {
 
     @Test
     fun `abrir la confirmacion consume el evento pero conserva los datos`() = runTest {
-        repo.respuestaSolicitud = ResultadoSolicitud.Aceptada(solicitud("N", 1, TipoVoto.AUTOMATICO, true), false)
+        repo.respuestaSolicitud = ResultadoSolicitud.Aceptada(solicitud("N", 1, true, true), false)
         vm.solicitar(cancion("N"))
         runCurrent()
 
@@ -338,7 +337,7 @@ class ColaViewModelTest {
 
     @Test
     fun `cerrar la confirmacion la olvida junto con su evento pendiente`() = runTest {
-        repo.respuestaSolicitud = ResultadoSolicitud.Aceptada(solicitud("N", 1, TipoVoto.AUTOMATICO, true), false)
+        repo.respuestaSolicitud = ResultadoSolicitud.Aceptada(solicitud("N", 1, true, true), false)
         vm.solicitar(cancion("N"))
         runCurrent()
 
@@ -366,8 +365,8 @@ class ColaViewModelTest {
 
     @Test
     fun `la confirmacion se actualiza con la posicion y la espera mas recientes de la cola`() = runTest {
-        val aceptada = solicitud("N", 1, TipoVoto.AUTOMATICO, true).copy(posicion = null, esperaEstimadaSegundos = null)
-        val enLaCola = solicitud("N", 2, TipoVoto.AUTOMATICO, true).copy(posicion = 3, esperaEstimadaSegundos = 420)
+        val aceptada = solicitud("N", 1, true, true).copy(posicion = null, esperaEstimadaSegundos = null)
+        val enLaCola = solicitud("N", 2, true, true).copy(posicion = 3, esperaEstimadaSegundos = 420)
         repo.respuestaSolicitud = ResultadoSolicitud.Aceptada(aceptada, false)
         repo.respuestaCola = ResultadoCola.Exito(EstadoCola(suena, listOf(enLaCola)))
 
@@ -383,7 +382,7 @@ class ColaViewModelTest {
     @Test
     fun `si la cola no trae la solicitud se conserva la confirmacion original`() = runTest {
         // Suma de voto a la canción que suena: no está en la lista de espera.
-        val sonando = solicitud("S0", 2, TipoVoto.AUTOMATICO).copy(estado = EstadoSolicitud.EN_REPRODUCCION, posicion = null)
+        val sonando = solicitud("S0", 2, true).copy(estado = EstadoSolicitud.EN_REPRODUCCION, posicion = null)
         repo.respuestaSolicitud = ResultadoSolicitud.Aceptada(sonando, sumoVotoAExistente = true)
         repo.respuestaCola = ResultadoCola.Exito(EstadoCola(suena, listOf(solicitud("A"))))
 
@@ -426,7 +425,7 @@ class ColaViewModelTest {
         runCurrent()
         assertNotNull(vm.estado.value.mensaje)
         repo.compuertaVoto = CompletableDeferred()
-        repo.respuestaVoto = ResultadoVoto.Registrado(solicitud("B", 2, TipoVoto.MANUAL))
+        repo.respuestaVoto = ResultadoVoto.Registrado(solicitud("B", 2, true))
 
         vm.votar("B")
 
@@ -437,7 +436,7 @@ class ColaViewModelTest {
 
     @Test
     fun `ver la cola desde la confirmacion destaca la solicitud y cierra la confirmacion`() = runTest {
-        repo.respuestaSolicitud = ResultadoSolicitud.Aceptada(solicitud("N", 1, TipoVoto.AUTOMATICO, true), false)
+        repo.respuestaSolicitud = ResultadoSolicitud.Aceptada(solicitud("N", 1, true, true), false)
         vm.solicitar(cancion("N"))
         runCurrent()
 
@@ -458,7 +457,7 @@ class ColaViewModelTest {
 
     @Test
     fun `quitar el destacado lo borra`() = runTest {
-        repo.respuestaSolicitud = ResultadoSolicitud.Aceptada(solicitud("N", 1, TipoVoto.AUTOMATICO, true), false)
+        repo.respuestaSolicitud = ResultadoSolicitud.Aceptada(solicitud("N", 1, true, true), false)
         vm.solicitar(cancion("N"))
         runCurrent()
         vm.verColaDesdeConfirmacion()
@@ -470,7 +469,7 @@ class ColaViewModelTest {
 
     @Test
     fun `cerrar la confirmacion no toca el destacado`() = runTest {
-        repo.respuestaSolicitud = ResultadoSolicitud.Aceptada(solicitud("N", 1, TipoVoto.AUTOMATICO, true), false)
+        repo.respuestaSolicitud = ResultadoSolicitud.Aceptada(solicitud("N", 1, true, true), false)
         vm.solicitar(cancion("N"))
         runCurrent()
         vm.verColaDesdeConfirmacion()
@@ -483,7 +482,7 @@ class ColaViewModelTest {
     @Test
     fun `un voto o un refresco no cambian la solicitud destacada`() = runTest {
         abrir()
-        repo.respuestaSolicitud = ResultadoSolicitud.Aceptada(solicitud("B", 3, TipoVoto.AUTOMATICO), true)
+        repo.respuestaSolicitud = ResultadoSolicitud.Aceptada(solicitud("B", 3, true), true)
         vm.solicitar(cancion("B"))
         runCurrent()
         vm.verColaDesdeConfirmacion()
@@ -493,5 +492,95 @@ class ColaViewModelTest {
         abrir()
 
         assertEquals("B", vm.estado.value.solicitudDestacada)
+    }
+
+    // --- Versiones de la cola y operaciones sin confirmar -----------------------------------------
+
+    private fun conVersion(version: Long, vararg ids: String) =
+        EstadoCola(suena, ids.map { solicitud(it) }, version = version)
+
+    @Test
+    fun `un estado con version menor o igual a la aplicada se descarta`() = runTest {
+        repo.respuestaCola = ResultadoCola.Exito(conVersion(5, "A", "B"))
+        abrir()
+
+        repo.respuestaCola = ResultadoCola.Exito(conVersion(4, "VIEJA")) // llegó tarde
+        vm.alMostrarse()
+        runCurrent()
+        assertEquals(listOf("A", "B"), exito().estado.cola.map { it.idSolicitud })
+
+        repo.respuestaCola = ResultadoCola.Exito(conVersion(5, "IGUAL"))
+        vm.alMostrarse()
+        runCurrent()
+        assertEquals(listOf("A", "B"), exito().estado.cola.map { it.idSolicitud })
+    }
+
+    @Test
+    fun `un estado con version mayor reemplaza al anterior`() = runTest {
+        repo.respuestaCola = ResultadoCola.Exito(conVersion(5, "A", "B"))
+        abrir()
+
+        repo.respuestaCola = ResultadoCola.Exito(conVersion(6, "B", "A"))
+        vm.alMostrarse()
+        runCurrent()
+
+        assertEquals(listOf("B", "A"), exito().estado.cola.map { it.idSolicitud }) // se respeta el orden del servidor
+    }
+
+    @Test
+    fun `un reintento tras un error acepta lo que llegue aunque la version sea la misma`() = runTest {
+        repo.respuestaCola = ResultadoCola.Exito(conVersion(5, "A"))
+        abrir()
+        repo.respuestaCola = ResultadoCola.Error(TipoErrorCola.CONEXION)
+        vm.reintentar()
+        runCurrent()
+        assertTrue(vm.estado.value.carga is CargaCola.Error)
+
+        repo.respuestaCola = ResultadoCola.Exito(conVersion(5, "A"))
+        vm.reintentar()
+        runCurrent()
+
+        assertEquals(listOf("A"), exito().estado.cola.map { it.idSolicitud })
+    }
+
+    @Test
+    fun `una solicitud sin confirmar consulta la cola y no se repite sola`() = runTest {
+        abrir()
+        repo.respuestaSolicitud = ResultadoSolicitud.Error(TipoErrorCola.SIN_CONFIRMAR)
+        val consultasAntes = repo.consultas
+
+        vm.solicitar(cancion("N"))
+        runCurrent()
+
+        assertEquals(listOf("N"), repo.solicitudes) // una sola vez
+        assertEquals(consultasAntes + 1, repo.consultas) // pidió la cola para ver si se registró
+        assertEquals("No pudimos confirmar tu acción", vm.estado.value.mensaje?.titulo)
+        assertEquals(false, vm.estado.value.solicitando)
+    }
+
+    @Test
+    fun `un voto sin confirmar consulta la cola y no se repite solo`() = runTest {
+        abrir()
+        repo.respuestaVoto = ResultadoVoto.Error(TipoErrorCola.SIN_CONFIRMAR)
+        val consultasAntes = repo.consultas
+
+        vm.votar("B")
+        runCurrent()
+
+        assertEquals(listOf("B"), repo.votos)
+        assertEquals(consultasAntes + 1, repo.consultas)
+        assertTrue(vm.estado.value.votando.isEmpty())
+    }
+
+    @Test
+    fun `un error de conexion comun al solicitar no consulta la cola`() = runTest {
+        abrir()
+        repo.respuestaSolicitud = ResultadoSolicitud.Error(TipoErrorCola.CONEXION)
+        val consultasAntes = repo.consultas
+
+        vm.solicitar(cancion("N"))
+        runCurrent()
+
+        assertEquals(consultasAntes, repo.consultas)
     }
 }

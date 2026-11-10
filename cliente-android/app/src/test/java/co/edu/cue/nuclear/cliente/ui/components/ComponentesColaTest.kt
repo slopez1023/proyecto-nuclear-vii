@@ -5,9 +5,9 @@ import co.edu.cue.nuclear.cliente.data.cola.EstadoSolicitud
 import co.edu.cue.nuclear.cliente.data.cola.MotivoRechazoOperacion
 import co.edu.cue.nuclear.cliente.data.cola.ResultadoSolicitud
 import co.edu.cue.nuclear.cliente.data.cola.ResultadoVoto
+import co.edu.cue.nuclear.cliente.data.cola.MiVotacion
 import co.edu.cue.nuclear.cliente.data.cola.SolicitudCola
 import co.edu.cue.nuclear.cliente.data.cola.TipoErrorCola
-import co.edu.cue.nuclear.cliente.data.cola.TipoVoto
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -20,7 +20,7 @@ class ComponentesColaTest {
 
     private fun solicitud(
         estado: EstadoSolicitud = EstadoSolicitud.PENDIENTE,
-        miVoto: TipoVoto? = null,
+        yaVoto: Boolean = false,
         esMia: Boolean = false,
     ) = SolicitudCola(
         idSolicitud = "S1",
@@ -29,7 +29,7 @@ class ComponentesColaTest {
         posicion = 1,
         totalVotos = 1,
         esMia = esMia,
-        miVoto = miVoto,
+        yaVoto = yaVoto,
         esperaEstimadaSegundos = null,
     )
 
@@ -46,11 +46,24 @@ class ComponentesColaTest {
     }
 
     @Test
-    fun `el voto manual y el automatico se muestran distinto`() {
-        assertEquals(EstadoBotonVoto.VotadoManual, solicitud(miVoto = TipoVoto.MANUAL).estadoBotonVoto(false))
+    fun `la solicitud propia y el voto a una ajena se muestran distinto sin deducir el origen`() {
+        assertEquals(EstadoBotonVoto.Votado, solicitud(yaVoto = true).estadoBotonVoto(false))
+        assertEquals(EstadoBotonVoto.TuSolicitud, solicitud(yaVoto = true, esMia = true).estadoBotonVoto(false))
+    }
+
+    @Test
+    fun `si el servidor dice que aun no se puede votar el boton queda en espera`() {
+        assertEquals(EstadoBotonVoto.Espera, solicitud().estadoBotonVoto(votando = false, puedeVotarAhora = false))
+        assertEquals(EstadoBotonVoto.Disponible, solicitud().estadoBotonVoto(votando = false, puedeVotarAhora = true))
+    }
+
+    @Test
+    fun `la ayuda de elegibilidad no oculta que ya votaste ni que es tuya`() {
+        assertEquals(EstadoBotonVoto.Votado, solicitud(yaVoto = true).estadoBotonVoto(false, puedeVotarAhora = false))
+        assertEquals(EstadoBotonVoto.TuSolicitud, solicitud(yaVoto = true, esMia = true).estadoBotonVoto(false, puedeVotarAhora = false))
         assertEquals(
-            EstadoBotonVoto.VotoAutomatico,
-            solicitud(miVoto = TipoVoto.AUTOMATICO, esMia = true).estadoBotonVoto(false),
+            EstadoBotonVoto.NoDisponible,
+            solicitud(estado = EstadoSolicitud.EN_REPRODUCCION).estadoBotonVoto(false, puedeVotarAhora = false),
         )
     }
 
@@ -148,10 +161,11 @@ class ComponentesColaTest {
     }
 
     @Test
-    fun `los errores de comunicacion usan tono de peligro y no muestran detalles tecnicos`() {
+    fun `los errores de comunicacion tienen tono propio y no muestran detalles tecnicos`() {
+        val avisos = setOf(TipoErrorCola.SESION_NO_DISPONIBLE, TipoErrorCola.SERVICIO_NO_DISPONIBLE, TipoErrorCola.SIN_CONFIRMAR)
         TipoErrorCola.entries.forEach {
             val mensaje = ResultadoVoto.Error(it).aMensaje()
-            assertEquals(TonoVisual.Peligro, mensaje.tono)
+            assertEquals(if (it in avisos) TonoVisual.Aviso else TonoVisual.Peligro, mensaje.tono)
             val texto = (mensaje.titulo + " " + mensaje.detalle).lowercase()
             assertFalse(texto.contains("http"))
             assertFalse(texto.contains("exception"))
@@ -165,5 +179,23 @@ class ComponentesColaTest {
         assertFalse(MensajesOperacion.InformacionNoDisponible.enProceso)
         assertNotNull(MensajesOperacion.InformacionNoDisponible.detalle)
         assertNull(MensajesOperacion.EnviandoSolicitud.detalle)
+    }
+
+    // --- Información sobre el intervalo de votación (F4) -------------------------------------
+
+    private fun votacion(puede: Boolean, restantes: Int) = MiVotacion(puede, intervaloCanciones = 2, reproduccionesContadas = 2 - restantes, cancionesRestantes = restantes)
+
+    @Test
+    fun `el texto de votacion dice cuantas canciones faltan sin calcular nada`() {
+        assertEquals("Ya puedes pedir una canción o votar.", textoVotacion(votacion(true, 0)))
+        assertEquals("Podrás pedir otra canción o votar cuando suene 1 canción más.", textoVotacion(votacion(false, 1)))
+        assertEquals("Podrás pedir otra canción o votar cuando suenen 2 canciones más.", textoVotacion(votacion(false, 2)))
+        assertEquals("Podrás pedir otra canción o votar cuando suenen 8 canciones más.", textoVotacion(votacion(false, 8)))
+    }
+
+    @Test
+    fun `si el servidor deja pedir (por ejemplo cola inactiva) el texto no habla de canciones que faltan`() {
+        assertFalse(textoVotacion(votacion(true, 0)).contains("faltan"))
+        assertFalse(textoVotacion(MiVotacion(true, 2, 1, 0)).contains("suenen"))
     }
 }

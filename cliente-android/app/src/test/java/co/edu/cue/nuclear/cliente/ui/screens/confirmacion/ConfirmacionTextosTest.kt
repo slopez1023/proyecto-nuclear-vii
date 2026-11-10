@@ -3,7 +3,6 @@ package co.edu.cue.nuclear.cliente.ui.screens.confirmacion
 import co.edu.cue.nuclear.cliente.data.busqueda.Cancion
 import co.edu.cue.nuclear.cliente.data.cola.EstadoSolicitud
 import co.edu.cue.nuclear.cliente.data.cola.SolicitudCola
-import co.edu.cue.nuclear.cliente.data.cola.TipoVoto
 import co.edu.cue.nuclear.cliente.ui.screens.cola.ConfirmacionSolicitud
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -20,7 +19,7 @@ class ConfirmacionTextosTest {
         posicion = posicion,
         totalVotos = 1,
         esMia = true,
-        miVoto = TipoVoto.AUTOMATICO,
+        yaVoto = true,
         esperaEstimadaSegundos = null,
     )
 

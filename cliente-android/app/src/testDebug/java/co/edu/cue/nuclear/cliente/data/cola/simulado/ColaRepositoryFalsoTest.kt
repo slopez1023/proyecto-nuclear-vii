@@ -55,7 +55,8 @@ class ColaRepositoryFalsoTest {
 
         assertFalse(resultado.sumoVotoAExistente)
         assertEquals(1, resultado.solicitud.totalVotos)
-        assertEquals(TipoVoto.AUTOMATICO, resultado.solicitud.miVoto)
+        assertEquals(true, resultado.solicitud.yaVoto)
+        assertEquals(TipoVoto.AUTOMATICO, resultado.origenVoto)
         assertTrue(resultado.solicitud.esMia)
         assertEquals(EstadoSolicitud.PENDIENTE, resultado.solicitud.estado)
         assertEquals(5, repo.cola().cola.size)
@@ -79,7 +80,8 @@ class ColaRepositoryFalsoTest {
 
         assertTrue(resultado.sumoVotoAExistente)
         assertEquals(2, resultado.solicitud.totalVotos)
-        assertEquals(TipoVoto.AUTOMATICO, resultado.solicitud.miVoto)
+        assertEquals(true, resultado.solicitud.yaVoto)
+        assertEquals(TipoVoto.AUTOMATICO, resultado.origenVoto)
         assertEquals(4, repo.cola().cola.size)
     }
 
@@ -111,7 +113,8 @@ class ColaRepositoryFalsoTest {
         val resultado = repo.votar("SIM-SOL-0003") as ResultadoVoto.Registrado
 
         assertEquals(2, resultado.solicitud.totalVotos)
-        assertEquals(TipoVoto.MANUAL, resultado.solicitud.miVoto)
+        assertEquals(true, resultado.solicitud.yaVoto)
+        assertEquals(TipoVoto.MANUAL, resultado.origenVoto)
         assertFalse(resultado.solicitud.esMia)
         assertFalse(resultado.solicitud.puedeVotar)
     }

@@ -66,7 +66,7 @@ private fun EnColaPreview() = DetalleEnCola(EstadoCancionEnCola.Pendiente(pendie
 @Preview(name = "En la cola, ya votaste", widthDp = 360, heightDp = 800)
 @Composable
 private fun EnColaVotadaPreview() = DetalleEnCola(
-    EstadoCancionEnCola.Pendiente(pendienteAjena.copy(miVoto = co.edu.cue.nuclear.cliente.data.cola.TipoVoto.MANUAL)),
+    EstadoCancionEnCola.Pendiente(pendienteAjena.copy(yaVoto = true)),
 )
 
 @Preview(name = "Solicitada por ti", widthDp = 360, heightDp = 800)

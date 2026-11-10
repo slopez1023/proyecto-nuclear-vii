@@ -20,7 +20,7 @@ class ColaScreenLogicaTest {
         posicion = 1,
         totalVotos = 1,
         esMia = false,
-        miVoto = null,
+        yaVoto = false,
         esperaEstimadaSegundos = null,
     )
 

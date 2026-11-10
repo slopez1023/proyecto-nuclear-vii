@@ -105,6 +105,9 @@ private fun MensajesPreview() = Pantalla {
     MensajeOperacion(ResultadoSolicitud.Rechazada(MotivoRechazoOperacion.CANCION_NO_DISPONIBLE).aMensaje())
     MensajeOperacion(TipoErrorCola.CONEXION.aMensaje())
     MensajeOperacion(TipoErrorCola.SERVIDOR.aMensaje())
+    MensajeOperacion(TipoErrorCola.SESION_NO_DISPONIBLE.aMensaje())
+    MensajeOperacion(TipoErrorCola.SERVICIO_NO_DISPONIBLE.aMensaje())
+    MensajeOperacion(TipoErrorCola.SIN_CONFIRMAR.aMensaje())
     MensajeOperacion(MensajesOperacion.EnviandoSolicitud)
     MensajeOperacion(MensajesOperacion.InformacionNoDisponible)
 }

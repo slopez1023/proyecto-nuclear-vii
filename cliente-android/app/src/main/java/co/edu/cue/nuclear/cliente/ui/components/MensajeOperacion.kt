@@ -95,6 +95,21 @@ fun TipoErrorCola.aMensaje(): MensajeUi = when (this) {
         "Algo salió mal",
         "No pudimos completar la operación. Inténtalo de nuevo en unos segundos.",
     )
+    TipoErrorCola.SESION_NO_DISPONIBLE -> MensajeUi(
+        TonoVisual.Aviso,
+        "Sesión no disponible",
+        "Esta sesión ya no está activa. Escanea de nuevo el código QR del establecimiento.",
+    )
+    TipoErrorCola.SERVICIO_NO_DISPONIBLE -> MensajeUi(
+        TonoVisual.Aviso,
+        "Servicio no disponible",
+        "No pudimos validar la canción en este momento. Inténtalo de nuevo en unos minutos.",
+    )
+    TipoErrorCola.SIN_CONFIRMAR -> MensajeUi(
+        TonoVisual.Aviso,
+        "No pudimos confirmar tu acción",
+        "No sabemos si se registró. Revisa la cola antes de intentarlo de nuevo.",
+    )
 }
 
 /** Confirmación o rechazo de una solicitud. */

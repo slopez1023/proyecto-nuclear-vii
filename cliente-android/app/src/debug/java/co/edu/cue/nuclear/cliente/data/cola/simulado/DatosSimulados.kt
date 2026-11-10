@@ -5,7 +5,6 @@ import co.edu.cue.nuclear.cliente.data.cola.EstadoCola
 import co.edu.cue.nuclear.cliente.data.cola.EstadoSolicitud
 import co.edu.cue.nuclear.cliente.data.cola.ReproduccionActual
 import co.edu.cue.nuclear.cliente.data.cola.SolicitudCola
-import co.edu.cue.nuclear.cliente.data.cola.TipoVoto
 
 /**
  * DATOS SIMULADOS (solo variante debug). No son información del backend.
@@ -43,10 +42,10 @@ object DatosSimulados {
     fun colaConVarias(): EstadoCola = EstadoCola(
         reproduccionActual = reproduccionActual,
         cola = listOf(
-            pendiente("SIM-SOL-0001", bohemian, 1, 3, esMia = true, miVoto = TipoVoto.AUTOMATICO, espera = 134),
-            pendiente("SIM-SOL-0002", billieJean, 2, 2, esMia = false, miVoto = TipoVoto.MANUAL, espera = 489),
-            pendiente("SIM-SOL-0003", hotelCalifornia, 3, 1, esMia = false, miVoto = null, espera = 783),
-            pendiente("SIM-SOL-0004", livinOnAPrayer, 4, 1, esMia = false, miVoto = null, espera = null),
+            pendiente("SIM-SOL-0001", bohemian, 1, 3, esMia = true, yaVoto = true, espera = 134),
+            pendiente("SIM-SOL-0002", billieJean, 2, 2, esMia = false, yaVoto = true, espera = 489),
+            pendiente("SIM-SOL-0003", hotelCalifornia, 3, 1, esMia = false, yaVoto = false, espera = 783),
+            pendiente("SIM-SOL-0004", livinOnAPrayer, 4, 1, esMia = false, yaVoto = false, espera = null),
         ),
     )
 
@@ -62,7 +61,7 @@ object DatosSimulados {
         posicion: Int,
         votos: Int,
         esMia: Boolean,
-        miVoto: TipoVoto?,
+        yaVoto: Boolean,
         espera: Int?,
     ) = SolicitudCola(
         idSolicitud = id,
@@ -71,7 +70,7 @@ object DatosSimulados {
         posicion = posicion,
         totalVotos = votos,
         esMia = esMia,
-        miVoto = miVoto,
+        yaVoto = yaVoto,
         esperaEstimadaSegundos = espera,
     )
 }

@@ -1,16 +1,24 @@
 package co.edu.cue.nuclear.cliente.data.cola
 
 import android.content.Context
-import co.edu.cue.nuclear.cliente.data.sesion.SesionActivaStore
-import retrofit2.Retrofit
+import co.edu.cue.nuclear.cliente.BuildConfig
 import co.edu.cue.nuclear.cliente.data.cola.simulado.ColaRepositoryDepurable
+import co.edu.cue.nuclear.cliente.data.sesion.SesionActivaStore
+import okhttp3.HttpUrl.Companion.toHttpUrl
+import retrofit2.Retrofit
 
 /**
- * Variante DEBUG: la cola usa datos SIMULADOS (nunca el backend). Se puede cambiar de escenario en
- * caliente desde el computador con ADB; ver [ColaRepositoryDepurable]. Hoy ignora el cliente de red y la
- * sesión; cuando exista el repositorio real, aquí se elegirá entre el real y el simulado (p. ej. con una propiedad
- * de Gradle) sin tocar `AppContainer`.
+ * Variante DEBUG: por defecto la cola usa datos SIMULADOS (nunca el backend); se puede cambiar de escenario en
+ * caliente desde el computador con ADB (ver [ColaRepositoryDepurable]). Con `-Pnuclear.colaReal=true` se usa el
+ * repositorio real y el flujo SSE real contra `BACKEND_URL` (por defecto el backend local vía `adb reverse tcp:3000 tcp:3000`).
  */
-@Suppress("UNUSED_PARAMETER")
 fun crearColaRepository(contexto: Context, retrofit: Retrofit, sesionActiva: SesionActivaStore): ColaRepository? =
-    ColaRepositoryDepurable(contexto.applicationContext)
+    if (BuildConfig.COLA_REAL) {
+        ColaRepositoryReal(retrofit.create(ColaApi::class.java), sesionActiva)
+    } else {
+        ColaRepositoryDepurable(contexto.applicationContext)
+    }
+
+/** Con datos simulados no hay flujo en tiempo real (`null`): la cola se actualiza al abrir la pantalla y tras cada operación. */
+fun crearColaEnVivo(baseUrl: String, sesionActiva: SesionActivaStore): ColaEnVivo? =
+    if (BuildConfig.COLA_REAL) ColaEnVivoSse(ColaEnVivoSse.crearClienteSse(), baseUrl.toHttpUrl(), sesionActiva) else null

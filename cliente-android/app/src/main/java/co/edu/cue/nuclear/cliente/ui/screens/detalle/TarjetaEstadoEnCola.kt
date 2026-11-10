@@ -13,7 +13,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import co.edu.cue.nuclear.cliente.data.cola.TipoVoto
 import co.edu.cue.nuclear.cliente.ui.components.ContadorVotos
 import co.edu.cue.nuclear.cliente.ui.components.Insignia
 import co.edu.cue.nuclear.cliente.ui.components.TiempoEstimado
@@ -44,14 +43,14 @@ internal fun EstadoCancionEnCola.textos(): TextosEstadoCancion? = when (this) {
         insignia = "Solicitada por ti",
         tono = TonoVisual.Exito,
         titulo = "Tu solicitud ya está en la cola.",
-        // Solo se afirma el voto automático si el repositorio lo informó así.
-        detalle = if (solicitud.miVoto == TipoVoto.AUTOMATICO) "Incluye tu voto automático." else null,
+        // La solicitud propia nace con su voto automático (contrato: total_votos empieza en 1); solo se afirma si ya_voto.
+        detalle = if (solicitud.yaVoto) "Incluye tu voto automático." else null,
     )
     is EstadoCancionEnCola.Pendiente -> TextosEstadoCancion(
         insignia = "En la cola",
         tono = TonoVisual.Acento,
         titulo = "Esta canción ya está en la cola.",
-        detalle = if (solicitud.miVoto == TipoVoto.MANUAL) "Ya votaste por ella." else "Para apoyarla con un voto, ve a la cola.",
+        detalle = if (solicitud.yaVoto) "Ya votaste por ella." else "Para apoyarla con un voto, ve a la cola.",
     )
 }
 

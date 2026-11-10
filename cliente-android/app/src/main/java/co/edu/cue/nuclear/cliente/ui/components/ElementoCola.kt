@@ -52,6 +52,7 @@ private fun PosicionCola(posicion: Int?, modifier: Modifier = Modifier) {
  * @param onVotar se invoca solo cuando el botón está disponible.
  * @param proporcionPopularidad 0 a 1, votos frente a la más votada de la lista; `null` oculta la barra.
  * @param resaltada se destaca con el color de acento: es la solicitud que la persona acaba de confirmar.
+ * @param puedeVotarAhora `mi_votacion.puede_votar`: ayuda visual; si es `false` el botón muestra "Aún no".
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -62,6 +63,7 @@ fun ElementoCola(
     modifier: Modifier = Modifier,
     proporcionPopularidad: Float? = null,
     resaltada: Boolean = false,
+    puedeVotarAhora: Boolean = true,
 ) {
     val cancion = solicitud.cancion
     Column(
@@ -113,7 +115,7 @@ fun ElementoCola(
         ) {
             ContadorVotos(solicitud.totalVotos, proporcion = proporcionPopularidad)
             BotonVoto(
-                estado = solicitud.estadoBotonVoto(votando),
+                estado = solicitud.estadoBotonVoto(votando, puedeVotarAhora),
                 onClick = onVotar,
                 nombreCancion = cancion.titulo,
             )
