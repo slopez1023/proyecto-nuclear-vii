@@ -37,8 +37,8 @@ test('parseDuracionIso', () => {
 
 const searchMock = { items: [{ id: { videoId: 'AAA' } }, { id: { videoId: 'BBB' } }, { id: { videoId: 'CCC' } }] };
 const videosMock = { items: [
-  { id: 'AAA', snippet: { title: 'Canción A', channelTitle: 'Canal A', thumbnails: { medium: { url: 'https://i.ytimg.com/a.jpg' } } }, contentDetails: { duration: 'PT3M10S' }, status: { embeddable: true } },
-  { id: 'BBB', snippet: { title: 'Canción B', channelTitle: 'Canal B', thumbnails: {} }, contentDetails: { duration: 'PT2M' }, status: { embeddable: false } },
+  { id: 'AAA', snippet: { title: 'Canción A', channelTitle: 'Canal A', categoryId: '10', liveBroadcastContent: 'none', thumbnails: { medium: { url: 'https://i.ytimg.com/a.jpg' } } }, contentDetails: { duration: 'PT3M10S' }, status: { embeddable: true, privacyStatus: 'public' } },
+  { id: 'BBB', snippet: { title: 'Canción B', channelTitle: 'Canal B', categoryId: '10', liveBroadcastContent: 'none', thumbnails: {} }, contentDetails: { duration: 'PT2M' }, status: { embeddable: false, privacyStatus: 'public' } },
 ] };
 
 test('mapearCanciones: campos de la entidad Canción, no disponible y descarte de incompletos', () => {

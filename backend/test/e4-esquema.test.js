@@ -35,7 +35,7 @@ test('las migraciones crean todas las tablas y quedan registradas', async () => 
     'cancion', 'dispositivo', 'dispositivo_sesion', 'establecimiento', 'reproduccion', 'schema_migrations', 'sesion', 'solicitud', 'voto',
   ]);
   const { rows: m } = await q('SELECT nombre FROM schema_migrations');
-  assert.deepEqual(m.map((r) => r.nombre), ['001_esquema.sql']);
+  assert.deepEqual(m.map((r) => r.nombre), ['001_esquema.sql', '002_motivo_demasiado_larga.sql']);
 });
 
 test('migrar es idempotente: una segunda ejecución no aplica nada', async () => {

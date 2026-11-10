@@ -1,7 +1,7 @@
 'use strict';
 const path = require('node:path');
 const express = require('express');
-const { validarToken } = require('./sesiones');
+const { validarToken, validarTokenEnBd } = require('./sesiones');
 const { validarEvento } = require('./eventos');
 const { YoutubeError } = require('./youtube');
 const { montarRutasE4 } = require('./rutas-e4');
@@ -47,8 +47,15 @@ function crearApp({ sesiones, youtube, almacenEventos, config = {}, db, ahora, c
   }
 
   // B01: validación del QR/sesión
-  app.get('/api/sesiones/:token', (req, res) => {
-    const r = validarToken(req.params.token, sesiones);
+  app.get('/api/sesiones/:token', async (req, res) => {
+    let r;
+    try {
+      // Con PostgreSQL (E4) la sesión sale de la base, igual que la cola; sin base, del mock del E3.
+      r = db ? await validarTokenEnBd(req.params.token, db) : validarToken(req.params.token, sesiones);
+    } catch (err) {
+      console.error('[sesiones] error al validar el token:', err.message);
+      return errorJson(res, 500, 'error_interno', 'Error inesperado.');
+    }
     if (!r.ok) {
       return errorJson(res, STATUS_POR_MOTIVO[r.motivo], r.motivo, 'Acceso no disponible para este código QR.');
     }

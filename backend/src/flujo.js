@@ -43,6 +43,39 @@ function crearFlujo({
     return `id: ${estado.version}\nevent: estado\ndata: ${JSON.stringify(estado)}\n\n`;
   }
 
+  /** Por qué una sesión ya no admite participación (null = sigue vigente). Mismos motivos que los códigos 404/410. */
+  const motivoCierre = (sesion) => {
+    if (!sesion) return 'sesion_inexistente';
+    if (sesion.estado !== 'activa') return 'sesion_cerrada';
+    if (sesion.qr_estado !== 'activo') return 'qr_desactivado';
+    return null;
+  };
+
+  /**
+   * Avisa a las conexiones de que la sesión terminó (`event: sesion_cerrada`) y cierra el flujo. Así Android no tiene
+   * que esperar a su siguiente operación para enterarse. Es un tipo de evento NUEVO y aditivo: quien solo entiende
+   * `estado` lo ignora.
+   */
+  function avisarCierre(idSesion, lista, motivo) {
+    const datos = JSON.stringify({ sesion_id: idSesion, motivo });
+    for (const con of lista) {
+      escribir(con, `event: sesion_cerrada\ndata: ${datos}\n\n`);
+      if (!con.res.writableEnded) con.res.end();
+    }
+  }
+
+  /** Comprueba en la base las sesiones con conexiones abiertas y cierra el flujo de las que ya no están vigentes. */
+  async function verificarSesiones() {
+    for (const idSesion of [...conexiones.keys()]) {
+      try {
+        const motivo = motivoCierre(await repo.obtenerSesion(pool, idSesion));
+        if (motivo) avisarCierre(idSesion, [...(conexiones.get(idSesion) || [])], motivo);
+      } catch (err) {
+        console.error(`[flujo] no se pudo verificar la sesión ${idSesion}:`, err.message);
+      }
+    }
+  }
+
   /** Encola un envío para la sesión: `destinatarios()` se evalúa al momento de enviar. */
   function encolar(idSesion, destinatarios) {
     const previa = pendientes.get(idSesion) || Promise.resolve();
@@ -50,6 +83,8 @@ function crearFlujo({
       const lista = destinatarios();
       if (lista.length === 0) return;
       const sesion = await repo.obtenerSesion(pool, idSesion);
+      const cierre = motivoCierre(sesion);
+      if (cierre) return avisarCierre(idSesion, lista, cierre);
       const base = await cola.estadoBase(pool, sesion);
       for (const con of lista) {
         if (con.res.writableEnded || con.res.destroyed) continue;
@@ -120,8 +155,9 @@ function crearFlujo({
   /** Comentario `: ping` a todas las conexiones (mantiene viva la conexión en proxies). */
   function ping() {
     for (const set of conexiones.values()) for (const con of set) escribir(con, ': ping\n\n');
+    return verificarSesiones(); // cada ping aprovecha para detectar sesiones cerradas
   }
-  const temporizador = programarIntervalo(ping, pingMs);
+  const temporizador = programarIntervalo(() => { ping(); }, pingMs);
 
   /** Se cumple cuando no quedan envíos ni registros de conexión pendientes. */
   async function inactivo() {
@@ -152,7 +188,7 @@ function crearFlujo({
     return new Promise((resolve) => esperasConexiones.push({ n, resolve }));
   }
 
-  return { abrir, notificarSesion, notificarEstablecimiento, ping, cerrar, inactivo, totalConexiones, esperarConexiones };
+  return { abrir, notificarSesion, notificarEstablecimiento, ping, verificarSesiones, cerrar, inactivo, totalConexiones, esperarConexiones };
 }
 
 module.exports = { crearFlujo, RETRY_MS };

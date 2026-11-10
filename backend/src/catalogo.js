@@ -5,7 +5,7 @@
  * Esta validación se hace SIEMPRE antes de abrir una transacción: puede llamar a YouTube.
  */
 const repo = require('./db/repositorio');
-const { parseDuracionIso, elegirMiniatura, YoutubeError } = require('./youtube');
+const { parseDuracionIso, elegirMiniatura, YoutubeError, motivoNoPermitido } = require('./youtube');
 const { ErrorApi } = require('./comun-e4');
 
 const VIGENCIA_MS = 24 * 60 * 60 * 1000;
@@ -16,14 +16,8 @@ const VIGENCIA_MS = 24 * 60 * 60 * 1000;
  */
 function evaluarVideo(v) {
   const snippet = v.snippet || {};
-  const status = v.status || {};
   const duracion = parseDuracionIso(v.contentDetails && v.contentDetails.duration);
-  let motivo = null;
-  if (snippet.categoryId !== '10') motivo = 'no_musica';
-  else if (status.embeddable === false) motivo = 'no_embebible';
-  else if (status.privacyStatus !== 'public') motivo = 'no_publico';
-  else if (snippet.liveBroadcastContent !== 'none') motivo = 'en_vivo';
-  else if (duracion === null) motivo = 'sin_duracion';
+  const motivo = motivoNoPermitido(v, duracion);
   return {
     youtube_video_id: v.id,
     titulo: snippet.title || '',
