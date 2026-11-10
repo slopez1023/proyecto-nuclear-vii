@@ -2,6 +2,7 @@ package co.edu.cue.nuclear.cliente.data
 
 import co.edu.cue.nuclear.cliente.data.busqueda.BusquedaApi
 import co.edu.cue.nuclear.cliente.data.eventos.EventosApi
+import co.edu.cue.nuclear.cliente.data.sesion.SesionActivaStore
 import co.edu.cue.nuclear.cliente.data.sesion.SesionApi
 import java.util.concurrent.TimeUnit
 import kotlinx.serialization.json.Json
@@ -12,11 +13,15 @@ import retrofit2.converter.kotlinx.serialization.asConverterFactory
 
 private val JSON = Json { ignoreUnknownKeys = true }
 
-/** Crea el cliente Retrofit contra el backend real. `baseUrl` debe terminar en "/". */
-fun crearRetrofit(baseUrl: String): Retrofit {
+/**
+ * Crea el cliente Retrofit contra el backend real. `baseUrl` debe terminar en "/".
+ * Con [sesionActiva], las llamadas del E4 llevan la cabecera `X-Dispositivo-Id` (ver [InterceptorDispositivo]).
+ */
+fun crearRetrofit(baseUrl: String, sesionActiva: SesionActivaStore? = null): Retrofit {
     val cliente = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS) // la búsqueda encadena dos llamadas a YouTube en el backend
+        .apply { sesionActiva?.let { addInterceptor(InterceptorDispositivo(it)) } }
         .build()
     return Retrofit.Builder()
         .baseUrl(baseUrl)

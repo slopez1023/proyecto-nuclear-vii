@@ -10,6 +10,7 @@ import co.edu.cue.nuclear.cliente.data.sesion.ResultadoAcceso
 import co.edu.cue.nuclear.cliente.data.sesion.Sesion
 import co.edu.cue.nuclear.cliente.data.sesion.SesionActiva
 import co.edu.cue.nuclear.cliente.data.sesion.SesionActivaStore
+import co.edu.cue.nuclear.cliente.data.sesion.SesionLocal
 import co.edu.cue.nuclear.cliente.data.sesion.SesionRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -40,6 +41,8 @@ class AccesoViewModel(
     private val dispositivos: DispositivoRepository,
     private val eventos: RegistradorEventos,
     private val sesionActiva: SesionActivaStore,
+    /** Si se da, la sesión validada se guarda (id_sesion e id_establecimiento) para recuperarla si el proceso se recrea. */
+    private val sesionLocal: SesionLocal? = null,
 ) : ViewModel() {
 
     private val _estado = MutableStateFlow<AccesoEstado>(
@@ -70,7 +73,8 @@ class AccesoViewModel(
     /** Deja la sesión disponible para otras pantallas y emite `dispositivo_unido`, una vez por validación exitosa. */
     private suspend fun registrarUnion(estado: AccesoEstado.Valido) {
         val idSesion = estado.sesion.idSesion
-        sesionActiva.actual = SesionActiva(idSesion, estado.dispositivoId)
+        sesionActiva.actual = SesionActiva(idSesion, estado.dispositivoId, estado.sesion.idEstablecimiento)
+        sesionLocal?.guardar(idSesion, estado.sesion.idEstablecimiento)
         val recurrente = dispositivos.marcarUnion()
         eventos.registrar(Evento.DispositivoUnido(idSesion, estado.dispositivoId, recurrente))
     }

@@ -83,6 +83,9 @@ val LocalFondoGlobal = compositionLocalOf { false }
  *   y el pie se desplazan junto con el cuerpo en lugar de quedar fijos.
  * @param header zona fija superior (p. ej. la marca).
  * @param footer zona fija inferior (p. ej. el botón principal, en la zona del pulgar).
+ * @param mantenerCabeceraYPieFijos si es true, la cabecera y el pie siguen fijos también con altura corta
+ *   (teléfono en horizontal). Útil cuando el pie es un aviso que debe verse aunque la lista esté desplazada.
+ *   Debe ser un valor constante de la pantalla: cambiarlo en caliente reinicia la posición de desplazamiento.
  */
 @Composable
 fun NuclearScreen(
@@ -96,6 +99,7 @@ fun NuclearScreen(
     ),
     header: (@Composable () -> Unit)? = null,
     footer: (@Composable ColumnScope.() -> Unit)? = null,
+    mantenerCabeceraYPieFijos: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val direccion = LocalLayoutDirection.current
@@ -111,7 +115,7 @@ fun NuclearScreen(
     ) {
         // Alturas cortas (teléfono en horizontal): la cabecera y el pie fijos se comerían la pantalla,
         // así que pasan a formar parte del contenido que se desplaza.
-        if (scrollable && maxHeight < ALTURA_CORTA) {
+        if (scrollable && maxHeight < ALTURA_CORTA && !mantenerCabeceraYPieFijos) {
             Column(
                 modifier = Modifier
                     .align(Alignment.TopCenter)

@@ -14,6 +14,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -32,19 +34,38 @@ import androidx.compose.runtime.remember
 
 /** Botón principal: alto mínimo de 52 dp para operarlo con una sola mano. */
 @Composable
-fun BotonPrincipal(texto: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun BotonPrincipal(texto: String, onClick: () -> Unit, modifier: Modifier = Modifier, habilitado: Boolean = true) {
     val fuente = remember { MutableInteractionSource() }
     Button(
         onClick = onClick,
+        enabled = habilitado,
         modifier = modifier.fillMaxWidth().heightIn(min = 52.dp).efectoPulsacion(fuente, 0.97f),
         interactionSource = fuente,
         shape = MaterialTheme.shapes.medium,
         colors = ButtonDefaults.buttonColors(
             containerColor = NuclearColors.Accent,
             contentColor = NuclearColors.Canvas,
+            disabledContainerColor = NuclearColors.Surface3,
+            disabledContentColor = NuclearColors.Muted,
         ),
     ) {
-        Text(texto, style = MaterialTheme.typography.labelLarge)
+        Text(texto, style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center)
+    }
+}
+
+/** Acción secundaria: contorno sin relleno, para no competir con el botón principal (una acción primaria por pantalla). */
+@Composable
+fun BotonSecundario(texto: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val fuente = remember { MutableInteractionSource() }
+    OutlinedButton(
+        onClick = onClick,
+        modifier = modifier.fillMaxWidth().heightIn(min = 52.dp).efectoPulsacion(fuente, 0.97f),
+        interactionSource = fuente,
+        shape = MaterialTheme.shapes.medium,
+        border = BorderStroke(1.dp, NuclearColors.LineStrong),
+        colors = ButtonDefaults.outlinedButtonColors(contentColor = NuclearColors.Text),
+    ) {
+        Text(texto, style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center)
     }
 }
 

@@ -28,4 +28,24 @@ function validarToken(token, sesiones) {
   return { ok: true, sesion };
 }
 
-module.exports = { TOKEN_REGEX, cargarSesiones, validarToken };
+/**
+ * Igual que [validarToken] pero contra la tabla `sesion` de PostgreSQL (la fuente del E4). Así el acceso del E3 y
+ * la cola del E4 coinciden: una sesión cerrada o con el QR desactivado en la base se rechaza ya al escanear.
+ */
+async function validarTokenEnBd(token, pool) {
+  if (typeof token !== 'string' || !TOKEN_REGEX.test(token)) return { ok: false, motivo: 'token_invalido' };
+  const fila = await require('./db/repositorio').obtenerSesionPorToken(pool, token);
+  if (!fila) return { ok: false, motivo: 'sesion_inexistente' };
+  if (fila.estado !== 'activa') return { ok: false, motivo: 'sesion_cerrada' };
+  if (fila.qr_estado !== 'activo') return { ok: false, motivo: 'qr_desactivado' };
+  return {
+    ok: true,
+    sesion: {
+      id_sesion: fila.id_sesion,
+      estado: fila.estado,
+      establecimiento: { id_establecimiento: fila.id_establecimiento, nombre: fila.nombre },
+    },
+  };
+}
+
+module.exports = { TOKEN_REGEX, cargarSesiones, validarToken, validarTokenEnBd };

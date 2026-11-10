@@ -9,6 +9,9 @@ plugins {
 fun backendUrl(porDefecto: String): String =
     providers.gradleProperty("nuclear.backendUrl").getOrElse(porDefecto)
 
+// Solo debug: -Pnuclear.colaReal=true usa el repositorio real de la cola en lugar de los datos simulados.
+val colaReal: Boolean = providers.gradleProperty("nuclear.colaReal").map { it.toBoolean() }.getOrElse(false)
+
 android {
     namespace = "co.edu.cue.nuclear.cliente"
     compileSdk = 37
@@ -19,6 +22,7 @@ android {
         targetSdk = 37
         versionCode = 1
         versionName = "0.1.0"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // Host HTTPS de los App Links (https://HOST/s/TOKEN). PLACEHOLDER hasta tener un host público:
         // la verificación autoVerify solo funciona con un dominio real que sirva /.well-known/assetlinks.json.
@@ -31,10 +35,12 @@ android {
             // Backend local vía `adb reverse tcp:3000 tcp:3000` (emulador o teléfono por USB).
             // En el emulador probado, 10.0.2.2 no era alcanzable desde la app; sobrescribible con -Pnuclear.backendUrl=...
             buildConfigField("String", "BACKEND_URL", "\"${backendUrl("http://localhost:3000/")}\"")
+            buildConfigField("boolean", "COLA_REAL", colaReal.toString())
         }
         release {
             isMinifyEnabled = false
             buildConfigField("String", "BACKEND_URL", "\"${backendUrl("https://nuclear.example.com/")}\"")
+            buildConfigField("boolean", "COLA_REAL", "true") // release usa siempre el repositorio real
         }
     }
 
@@ -68,6 +74,8 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     debugImplementation(libs.androidx.compose.ui.tooling)
 
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.runner)
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.okhttp.mockwebserver)

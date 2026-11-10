@@ -100,13 +100,15 @@ test('origen: "reproductor" cuando la simulación está deshabilitada; eventos d
   await e.siguiente('fallida', { segundos_reproducidos: 3, codigo_error: 'video_no_reproducible' });
   const { rows } = await e.pool.query('SELECT origen FROM reproduccion');
   assert.deepEqual(rows.map((x) => x.origen), ['reproductor', 'reproductor']);
-  assert.deepEqual(e.eventos.map((x) => x.tipo), ['reproduccion_iniciada', 'reproduccion_finalizada', 'reproduccion_iniciada', 'reproduccion_fallida']);
+  assert.deepEqual(e.eventos.map((x) => x.tipo), ['reproduccion_iniciada', 'reproduccion_finalizada', 'reproduccion_iniciada', 'reproduccion_fallida', 'cola_vacia']);
   const [iniciada, finalizada, , fallida] = e.eventos;
-  assert.deepEqual(Object.keys(iniciada.datos_evento).sort(), ['id_reproduccion', 'id_solicitud', 'origen', 'total_votos', 'youtube_video_id']);
+  assert.deepEqual(Object.keys(iniciada.datos_evento).sort(), ['id_reproduccion', 'id_solicitud', 'origen', 'segundos_en_cola', 'total_votos', 'youtube_video_id']);
+  assert.equal(iniciada.id_establecimiento, 'EST-MOCK-001'); // A1
+  assert.equal(typeof iniciada.datos_evento.segundos_en_cola, 'number'); // A5
   assert.equal(iniciada.datos_evento.id_solicitud, s1);
   assert.equal(iniciada.dispositivo_id, null);
   assert.equal(iniciada.actor, 'servidor');
-  assert.deepEqual(Object.keys(finalizada.datos_evento).sort(), ['id_reproduccion', 'id_solicitud', 'origen', 'segundos_reproducidos']);
+  assert.deepEqual(Object.keys(finalizada.datos_evento).sort(), ['id_reproduccion', 'id_solicitud', 'origen', 'segundos_reproducidos', 'total_votos', 'youtube_video_id']);
   assert.equal(fallida.datos_evento.codigo_error, 'video_no_reproducible');
   assert.equal(fallida.datos_evento.origen, 'reproductor');
   // Sin simulación habilitada, sus rutas no existen.

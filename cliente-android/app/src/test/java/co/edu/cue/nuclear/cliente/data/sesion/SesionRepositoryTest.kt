@@ -37,6 +37,16 @@ class SesionRepositoryTest {
     private fun error(codigo: String) = """{"error":{"codigo":"$codigo","mensaje":"Acceso no disponible para este código QR."}}"""
 
     @Test
+    fun conservaElIdDelEstablecimientoYDelaSesion() = runTest {
+        responder(200, """{"id_sesion":"S1","establecimiento":{"id_establecimiento":"E1","nombre":"Bar"},"estado":"activa"}""")
+
+        val sesion = (repositorio.validar("demo-activa-001") as ResultadoAcceso.Valido).sesion
+
+        assertEquals("S1", sesion.idSesion)
+        assertEquals("E1", sesion.idEstablecimiento)
+    }
+
+    @Test
     fun sesionActiva_devuelveValidoConDatosDelBackend() = runTest {
         responder(
             200,
@@ -46,7 +56,7 @@ class SesionRepositoryTest {
         val resultado = repositorio.validar("demo-activa-001")
 
         assertEquals(
-            ResultadoAcceso.Valido(Sesion("SES-MOCK-001", "La Nota Bar (demo)", provisional = true)),
+            ResultadoAcceso.Valido(Sesion("SES-MOCK-001", "La Nota Bar (demo)", provisional = true, idEstablecimiento = "EST-MOCK-001")),
             resultado,
         )
         assertEquals("/api/sesiones/demo-activa-001", servidor.takeRequest().path)

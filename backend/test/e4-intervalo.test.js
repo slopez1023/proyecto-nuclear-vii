@@ -141,12 +141,18 @@ test('C25: la canción votada manualmente comenzó después del voto y falla →
   assert.equal(await contadas(e, X), 1);
 }));
 
-test('C24 / H3c: no se puede votar manualmente una canción que ya suena (no llega a contar)', conEntorno(async (e) => {
+test('C24 / H3c (decisión de cierre): se puede votar manualmente la canción que suena; el voto reinicia el contador', conEntorno(async (e) => {
   const [s1] = await llenar(e, 1);
   await iniciar(e);
-  assert.equal((await e.votar(X, s1)).body.error.codigo, 'solicitud_no_votable');
+  const r = await e.votar(X, s1);
+  assert.equal(r.status, 201);
+  assert.equal(r.body.voto.origen, 'manual');
+  assert.equal(r.body.solicitud.estado, 'en_reproduccion');
+  assert.equal(r.body.solicitud.posicion, null);
+  assert.equal(r.body.solicitud.espera_estimada_segundos, null);
+  assert.equal(r.body.mi_votacion.reproducciones_contadas, 0);
   await cerrar(e);
-  assert.deepEqual(await e.miVotacion(X), { puede_votar: true, intervalo_canciones: 2, reproducciones_contadas: 0, canciones_restantes: 0 });
+  assert.equal((await e.votar(X, s1)).body.error.codigo, 'solicitud_no_votable'); // terminada: ya no
 }));
 
 test('C26 / H2: la canción solicitada por el dispositivo no le suma aunque suene después de otra solicitud suya', conEntorno(async (e) => {

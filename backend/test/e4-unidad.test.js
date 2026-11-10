@@ -116,11 +116,12 @@ test('conectividad: conexiones múltiples, gracia de 20 s, virtuales y aviso sol
 });
 
 test('eventos de servidor: sobre completo; tipo desconocido falla; registrar nunca lanza', () => {
-  const e = crearEventoServidor({ tipo: 'voto_registrado', sesion_id: 'S', dispositivo_id: 'u', datos_evento: { a: 1 } },
+  const e = crearEventoServidor({ tipo: 'voto_registrado', sesion_id: 'S', id_establecimiento: 'E', dispositivo_id: 'u', datos_evento: { a: 1 } },
     () => new Date(Date.UTC(2026, 0, 1)));
-  assert.deepEqual(Object.keys(e).sort(), ['actor', 'datos_evento', 'dispositivo_id', 'evento_id', 'fecha_hora', 'sesion_id', 'tipo', 'version_esquema']);
+  assert.deepEqual(Object.keys(e).sort(), ['actor', 'datos_evento', 'dispositivo_id', 'evento_id', 'fecha_hora', 'id_establecimiento', 'sesion_id', 'tipo', 'version_esquema']);
+  assert.equal(e.id_establecimiento, 'E');
   assert.equal(e.actor, 'servidor');
-  assert.equal(e.version_esquema, '1.1');
+  assert.equal(e.version_esquema, '1.2');
   assert.equal(e.fecha_hora, '2026-01-01T00:00:00.000Z');
   assert.throws(() => crearEventoServidor({ tipo: 'dispositivo_unido', sesion_id: 'S', datos_evento: {} }));
   assert.doesNotThrow(() => registrarEventoServidor({ guardar() { throw new Error('x'); } }, { tipo: 'voto_registrado', sesion_id: 'S', datos_evento: {} }));

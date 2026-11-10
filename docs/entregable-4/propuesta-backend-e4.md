@@ -24,6 +24,8 @@
 
 ---
 
+> **Actualización (fase de cierre, 2026-11-10):** H1 y H3c se **resolvieron** (ver `contrato-api-e4.md`, sección 12); H2, H3a, H3b y H4 se mantienen. El texto de abajo conserva la propuesta original.
+
 ## 1. Hallazgos que necesitan decisión del equipo (no he cambiado ninguna regla)
 
 ### H1. Bloqueo permanente con pocos dispositivos participando — **impide la funcionalidad**

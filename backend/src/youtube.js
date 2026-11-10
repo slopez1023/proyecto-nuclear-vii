@@ -55,6 +55,34 @@ function elegirMiniatura(thumbs = {}) {
   return (thumbs.medium || thumbs.high || thumbs.default || {}).url || null;
 }
 
+/** Una canción de un bar no puede durar horas (bloquearía la cola): tope por defecto de 20 minutos. */
+const DURACION_MAXIMA_POR_DEFECTO_S = 20 * 60;
+
+function duracionMaxima() {
+  const n = Number(process.env.DURACION_MAXIMA_SEGUNDOS);
+  return Number.isFinite(n) && n > 0 ? n : DURACION_MAXIMA_POR_DEFECTO_S;
+}
+
+/**
+ * Regla ÚNICA de «canción permitida» (E4, sección 8 de la propuesta). La usan la búsqueda (disponibilidad que ve
+ * Android) y el catálogo (validación al solicitar), para que lo que se ofrece sea lo que luego se acepta.
+ * Orden de comprobación: no_musica, no_embebible, no_publico, en_vivo, sin_duracion, demasiado_larga.
+ * @param {object} v item crudo de videos.list (snippet, contentDetails, status)
+ * @param {number|null} duracion segundos, o null si no es válida
+ * @returns {string|null} motivo, o null si está permitida
+ */
+function motivoNoPermitido(v, duracion) {
+  const snippet = v.snippet || {};
+  const status = v.status || {};
+  if (snippet.categoryId !== '10') return 'no_musica';
+  if (status.embeddable === false) return 'no_embebible';
+  if (status.privacyStatus !== 'public') return 'no_publico';
+  if (snippet.liveBroadcastContent !== 'none') return 'en_vivo';
+  if (duracion === null || duracion <= 0) return 'sin_duracion';
+  if (duracion > duracionMaxima()) return 'demasiado_larga';
+  return null;
+}
+
 /** Combina resultados de search.list y videos.list en objetos con los campos de la entidad Canción. */
 function mapearCanciones(searchItems, videoItems) {
   const detalle = new Map(videoItems.map((v) => [v.id, v]));
@@ -64,14 +92,13 @@ function mapearCanciones(searchItems, videoItems) {
     const v = detalle.get(id);
     if (!id || !v || !v.snippet) continue; // sin detalle: se descarta (información incompleta)
     const duracion = parseDuracionIso(v.contentDetails && v.contentDetails.duration);
-    const embebible = !(v.status && v.status.embeddable === false);
     canciones.push({
       youtube_video_id: id,
       titulo: v.snippet.title,
       artista_canal: v.snippet.channelTitle,
       duracion_segundos: duracion,
       url_miniatura: elegirMiniatura(v.snippet.thumbnails),
-      disponibilidad: embebible && duracion !== null ? 'disponible' : 'no_disponible',
+      disponibilidad: motivoNoPermitido(v, duracion) ? 'no_disponible' : 'disponible',
     });
   }
   return canciones;
@@ -141,4 +168,7 @@ function crearClienteYoutube({ apiKey, fetchImpl = globalThis.fetch, ttlMs = 5 *
   return { buscar, obtenerVideo, alObtenerVideos: (fn) => observadores.push(fn) };
 }
 
-module.exports = { YoutubeError, clasificarError, parseDuracionIso, elegirMiniatura, mapearCanciones, crearClienteYoutube };
+module.exports = {
+  YoutubeError, clasificarError, parseDuracionIso, elegirMiniatura, mapearCanciones, crearClienteYoutube,
+  motivoNoPermitido, DURACION_MAXIMA_POR_DEFECTO_S,
+};

@@ -61,19 +61,20 @@ function crearAlmacen(ruta = path.join(__dirname, '..', 'data', 'eventos.jsonl')
  * Eventos del E4 (propuesta, sección 9). Los registra el SERVIDOR cuando confirma la acción, con hora UTC
  * del servidor y actor "servidor". No pasan por POST /api/eventos: TIPOS (E3) no cambia.
  */
-const VERSION_ESQUEMA_SERVIDOR = '1.1';
+const VERSION_ESQUEMA_SERVIDOR = '1.2'; // 1.2: añade id_establecimiento al sobre (A1)
 const TIPOS_SERVIDOR = new Set([
   'solicitud_creada', 'voto_registrado', 'solicitud_rechazada', 'voto_rechazado',
-  'reproduccion_iniciada', 'reproduccion_finalizada', 'reproduccion_fallida',
+  'reproduccion_iniciada', 'reproduccion_finalizada', 'reproduccion_fallida', 'cola_vacia',
 ]);
 
-function crearEventoServidor({ tipo, sesion_id, dispositivo_id = null, datos_evento }, ahora = () => new Date()) {
+function crearEventoServidor({ tipo, sesion_id, id_establecimiento = null, dispositivo_id = null, datos_evento }, ahora = () => new Date()) {
   if (!TIPOS_SERVIDOR.has(tipo)) throw new Error(`Tipo de evento de servidor desconocido: ${tipo}`);
   return {
     evento_id: crypto.randomUUID(),
     tipo,
     fecha_hora: ahora().toISOString(),
     sesion_id,
+    id_establecimiento,
     actor: 'servidor',
     dispositivo_id,
     version_esquema: VERSION_ESQUEMA_SERVIDOR,

@@ -412,41 +412,24 @@
         }
       }
     },
-    "error_solicitud_no_votable": {
+    "votar_en_reproduccion": {
       "peticion": {
         "en": "2026-11-10T20:16:50.000Z",
         "metodo": "POST",
         "ruta": "/api/sesiones/SES-MOCK-001/solicitudes/SOL-1/votos",
         "cabeceras": {
-          "X-Dispositivo-Id": "b5c6d7e8-f9a0-4b1c-9d2e-3f4a5b6c7d8e"
-        }
-      },
-      "respuesta": {
-        "status": 409,
-        "cuerpo": {
-          "error": {
-            "codigo": "solicitud_no_votable",
-            "mensaje": "Esta canción ya no se puede votar."
-          }
-        }
-      }
-    },
-    "solicitar_voto_sumado_en_reproduccion": {
-      "peticion": {
-        "en": "2026-11-10T20:17:00.000Z",
-        "metodo": "POST",
-        "ruta": "/api/sesiones/SES-MOCK-001/solicitudes",
-        "cabeceras": {
           "X-Dispositivo-Id": "e1f2a3b4-c5d6-4e7f-a8b9-c0d1e2f3a4b5"
-        },
-        "cuerpo": {
-          "youtube_video_id": "Zi_XLOBDo_Y"
         }
       },
       "respuesta": {
-        "status": 200,
+        "status": 201,
         "cuerpo": {
-          "resultado": "voto_sumado",
+          "voto": {
+            "id_voto": "VOT-5",
+            "id_solicitud": "SOL-1",
+            "origen": "manual",
+            "fecha_hora": "2026-11-10T20:16:50.000Z"
+          },
           "solicitud": {
             "posicion": null,
             "id_solicitud": "SOL-1",
@@ -464,11 +447,101 @@
             "es_mia": false,
             "espera_estimada_segundos": null
           },
+          "mi_votacion": {
+            "puede_votar": false,
+            "intervalo_canciones": 2,
+            "reproducciones_contadas": 0,
+            "canciones_restantes": 2
+          }
+        }
+      }
+    },
+    "solicitar_voto_sumado_en_reproduccion": {
+      "peticion": {
+        "en": "2026-11-10T20:17:00.000Z",
+        "metodo": "POST",
+        "ruta": "/api/sesiones/SES-MOCK-001/solicitudes",
+        "cabeceras": {
+          "X-Dispositivo-Id": "a4a4a4a4-1111-4222-8333-444444444444"
+        },
+        "cuerpo": {
+          "youtube_video_id": "Zi_XLOBDo_Y"
+        }
+      },
+      "respuesta": {
+        "status": 200,
+        "cuerpo": {
+          "resultado": "voto_sumado",
+          "solicitud": {
+            "posicion": null,
+            "id_solicitud": "SOL-1",
+            "estado": "en_reproduccion",
+            "total_votos": 3,
+            "fecha_solicitud": "2026-11-10T20:13:00.000Z",
+            "cancion": {
+              "youtube_video_id": "Zi_XLOBDo_Y",
+              "titulo": "Billie Jean",
+              "artista_canal": "Michael Jackson",
+              "duracion_segundos": 294,
+              "url_miniatura": "https://i.ytimg.com/vi/Zi_XLOBDo_Y/mqdefault.jpg"
+            },
+            "ya_voto": true,
+            "es_mia": false,
+            "espera_estimada_segundos": null
+          },
           "voto": {
-            "id_voto": "VOT-5",
+            "id_voto": "VOT-6",
             "id_solicitud": "SOL-1",
             "origen": "solicitud",
             "fecha_hora": "2026-11-10T20:17:00.000Z"
+          },
+          "mi_votacion": {
+            "puede_votar": false,
+            "intervalo_canciones": 2,
+            "reproducciones_contadas": 0,
+            "canciones_restantes": 2
+          }
+        }
+      }
+    },
+    "solicitar_voto_sumado_en_cola": {
+      "peticion": {
+        "en": "2026-11-10T20:17:30.000Z",
+        "metodo": "POST",
+        "ruta": "/api/sesiones/SES-MOCK-001/solicitudes",
+        "cabeceras": {
+          "X-Dispositivo-Id": "a5a5a5a5-1111-4222-8333-555555555555"
+        },
+        "cuerpo": {
+          "youtube_video_id": "fJ9rUzIMcZQ"
+        }
+      },
+      "respuesta": {
+        "status": 200,
+        "cuerpo": {
+          "resultado": "voto_sumado",
+          "solicitud": {
+            "posicion": 1,
+            "id_solicitud": "SOL-2",
+            "estado": "pendiente",
+            "total_votos": 3,
+            "fecha_solicitud": "2026-11-10T20:15:03.000Z",
+            "cancion": {
+              "youtube_video_id": "fJ9rUzIMcZQ",
+              "titulo": "Bohemian Rhapsody",
+              "artista_canal": "Queen Official",
+              "duracion_segundos": 355,
+              "url_miniatura": "https://i.ytimg.com/vi/fJ9rUzIMcZQ/mqdefault.jpg"
+            },
+            "ya_voto": true,
+            "es_mia": false,
+            "espera_estimada_segundos": 84
+          },
+          "voto": {
+            "id_voto": "VOT-7",
+            "id_solicitud": "SOL-2",
+            "origen": "solicitud",
+            "fecha_hora": "2026-11-10T20:17:30.000Z"
           },
           "mi_votacion": {
             "puede_votar": false,
@@ -510,7 +583,7 @@
               "duracion_segundos": 355,
               "url_miniatura": "https://i.ytimg.com/vi/fJ9rUzIMcZQ/mqdefault.jpg"
             },
-            "total_votos": 2,
+            "total_votos": 3,
             "inicio_en": "2026-11-10T20:18:54.000Z",
             "segundos_restantes_estimados": 355
           }
@@ -692,6 +765,196 @@
         }
       }
     },
+    "error_solicitud_no_votable": {
+      "peticion": {
+        "en": "2026-11-10T20:21:21.000Z",
+        "metodo": "POST",
+        "ruta": "/api/sesiones/SES-MOCK-001/solicitudes/SOL-1/votos",
+        "cabeceras": {
+          "X-Dispositivo-Id": "a6a6a6a6-1111-4222-8333-666666666666"
+        }
+      },
+      "respuesta": {
+        "status": 409,
+        "cuerpo": {
+          "error": {
+            "codigo": "solicitud_no_votable",
+            "mensaje": "Esta canción ya no se puede votar."
+          }
+        }
+      }
+    },
+    "error_solicitud_inexistente": {
+      "peticion": {
+        "en": "2026-11-10T20:21:22.000Z",
+        "metodo": "POST",
+        "ruta": "/api/sesiones/SES-MOCK-001/solicitudes/SOL-99/votos",
+        "cabeceras": {
+          "X-Dispositivo-Id": "a6a6a6a6-1111-4222-8333-666666666666"
+        }
+      },
+      "respuesta": {
+        "status": 404,
+        "cuerpo": {
+          "error": {
+            "codigo": "solicitud_inexistente",
+            "mensaje": "La solicitud no existe en esta sesión."
+          }
+        }
+      }
+    },
+    "error_cancion_inexistente": {
+      "peticion": {
+        "en": "2026-11-10T20:21:23.000Z",
+        "metodo": "POST",
+        "ruta": "/api/sesiones/SES-MOCK-001/solicitudes",
+        "cabeceras": {
+          "X-Dispositivo-Id": "a6a6a6a6-1111-4222-8333-666666666666"
+        },
+        "cuerpo": {
+          "youtube_video_id": "NOEXISTE001"
+        }
+      },
+      "respuesta": {
+        "status": 404,
+        "cuerpo": {
+          "error": {
+            "codigo": "cancion_inexistente",
+            "mensaje": "YouTube no tiene un video con ese identificador."
+          }
+        }
+      }
+    },
+    "error_cancion_en_vivo": {
+      "peticion": {
+        "en": "2026-11-10T20:21:24.000Z",
+        "metodo": "POST",
+        "ruta": "/api/sesiones/SES-MOCK-001/solicitudes",
+        "cabeceras": {
+          "X-Dispositivo-Id": "a6a6a6a6-1111-4222-8333-666666666666"
+        },
+        "cuerpo": {
+          "youtube_video_id": "ENVIVO00001"
+        }
+      },
+      "respuesta": {
+        "status": 422,
+        "cuerpo": {
+          "error": {
+            "codigo": "cancion_no_permitida",
+            "mensaje": "Esta canción no está permitida en el catálogo.",
+            "detalle": {
+              "motivo": "en_vivo"
+            }
+          }
+        }
+      }
+    },
+    "error_cancion_demasiado_larga": {
+      "peticion": {
+        "en": "2026-11-10T20:21:25.000Z",
+        "metodo": "POST",
+        "ruta": "/api/sesiones/SES-MOCK-001/solicitudes",
+        "cabeceras": {
+          "X-Dispositivo-Id": "a6a6a6a6-1111-4222-8333-666666666666"
+        },
+        "cuerpo": {
+          "youtube_video_id": "LARGA000001"
+        }
+      },
+      "respuesta": {
+        "status": 422,
+        "cuerpo": {
+          "error": {
+            "codigo": "cancion_no_permitida",
+            "mensaje": "Esta canción no está permitida en el catálogo.",
+            "detalle": {
+              "motivo": "demasiado_larga"
+            }
+          }
+        }
+      }
+    },
+    "error_youtube_no_disponible": {
+      "peticion": {
+        "en": "2026-11-10T20:21:26.000Z",
+        "metodo": "POST",
+        "ruta": "/api/sesiones/SES-MOCK-001/solicitudes",
+        "cabeceras": {
+          "X-Dispositivo-Id": "a6a6a6a6-1111-4222-8333-666666666666"
+        },
+        "cuerpo": {
+          "youtube_video_id": "SINCACHE001"
+        }
+      },
+      "respuesta": {
+        "status": 503,
+        "cuerpo": {
+          "error": {
+            "codigo": "cuota_excedida",
+            "mensaje": "Se agotó la cuota diaria de YouTube."
+          }
+        }
+      }
+    },
+    "error_sesion_inexistente": {
+      "peticion": {
+        "en": "2026-11-10T20:21:27.000Z",
+        "metodo": "POST",
+        "ruta": "/api/sesiones/SES-NO-EXISTE/solicitudes",
+        "cabeceras": {
+          "X-Dispositivo-Id": "a6a6a6a6-1111-4222-8333-666666666666"
+        },
+        "cuerpo": {
+          "youtube_video_id": "fJ9rUzIMcZQ"
+        }
+      },
+      "respuesta": {
+        "status": 404,
+        "cuerpo": {
+          "error": {
+            "codigo": "sesion_inexistente",
+            "mensaje": "La sesión no existe."
+          }
+        }
+      }
+    },
+    "error_qr_desactivado": {
+      "peticion": {
+        "en": "2026-11-10T20:21:28.000Z",
+        "metodo": "POST",
+        "ruta": "/api/sesiones/SES-MOCK-003/solicitudes",
+        "cabeceras": {
+          "X-Dispositivo-Id": "a6a6a6a6-1111-4222-8333-666666666666"
+        },
+        "cuerpo": {
+          "youtube_video_id": "fJ9rUzIMcZQ"
+        }
+      },
+      "respuesta": {
+        "status": 410,
+        "cuerpo": {
+          "error": {
+            "codigo": "qr_desactivado",
+            "mensaje": "El código QR de esta sesión está desactivado."
+          }
+        }
+      }
+    },
+    "error_metodo_no_permitido": {
+      "peticion": {
+        "en": "2026-11-10T20:21:29.000Z",
+        "metodo": "DELETE",
+        "ruta": "/api/sesiones/SES-MOCK-001/solicitudes/SOL-2/votos",
+        "cabeceras": {
+          "X-Dispositivo-Id": "3f2b8c1e-9d4a-4e6b-8a1c-0b5d7e9f1a2b"
+        }
+      },
+      "respuesta": {
+        "status": 405,
+        "cuerpo": null
+      }
+    },
     "flujo_primer_mensaje": {
       "peticion": {
         "en": "2026-11-10T20:21:30.000Z",
@@ -707,9 +970,36 @@
         "lineas": [
           "retry: 3000",
           "",
-          "id: 9",
+          "id: 11",
           "event: estado",
-          "data: {\"sesion_id\":\"SES-MOCK-001\",\"version\":9,\"generado_en\":\"2026-11-10T20:21:30.000Z\",\"reproduccion_actual\":null,\"reglas_votacion\":{\"dispositivos_activos\":3,\"intervalo_canciones\":2},\"mi_votacion\":{\"puede_votar\":false,\"intervalo_canciones\":2,\"reproducciones_contadas\":1,\"canciones_restantes\":1},\"cola\":[]}"
+          "data: {\"sesion_id\":\"SES-MOCK-001\",\"version\":11,\"generado_en\":\"2026-11-10T20:21:30.000Z\",\"reproduccion_actual\":null,\"reglas_votacion\":{\"dispositivos_activos\":3,\"intervalo_canciones\":2},\"mi_votacion\":{\"puede_votar\":true,\"intervalo_canciones\":2,\"reproducciones_contadas\":1,\"canciones_restantes\":0},\"cola\":[]}"
+        ]
+      }
+    },
+    "flujo_actualizacion": {
+      "peticion": {
+        "en": "2026-11-10T20:21:40.000Z",
+        "nota": "otro dispositivo solicita fJ9rUzIMcZQ con el flujo abierto"
+      },
+      "respuesta": {
+        "status": 200,
+        "lineas": [
+          "id: 12",
+          "event: estado",
+          "data: {\"sesion_id\":\"SES-MOCK-001\",\"version\":12,\"generado_en\":\"2026-11-10T20:21:40.000Z\",\"reproduccion_actual\":null,\"reglas_votacion\":{\"dispositivos_activos\":3,\"intervalo_canciones\":2},\"mi_votacion\":{\"puede_votar\":false,\"intervalo_canciones\":2,\"reproducciones_contadas\":1,\"canciones_restantes\":1},\"cola\":[{\"posicion\":1,\"id_solicitud\":\"SOL-4\",\"estado\":\"pendiente\",\"total_votos\":1,\"fecha_solicitud\":\"2026-11-10T20:21:40.000Z\",\"cancion\":{\"youtube_video_id\":\"fJ9rUzIMcZQ\",\"titulo\":\"Bohemian Rhapsody\",\"artista_canal\":\"Queen Official\",\"duracion_segundos\":355,\"url_miniatura\":\"https://i.ytimg.com/vi/fJ9rUzIMcZQ/mqdefault.jpg\"},\"ya_voto\":false,\"es_mia\":false,\"espera_estimada_segundos\":0}]}"
+        ]
+      }
+    },
+    "flujo_sesion_cerrada": {
+      "peticion": {
+        "en": "2026-11-10T20:22:00.000Z",
+        "nota": "la sesión se cierra con el flujo abierto"
+      },
+      "respuesta": {
+        "status": 200,
+        "lineas": [
+          "event: sesion_cerrada",
+          "data: {\"sesion_id\":\"SES-MOCK-001\",\"motivo\":\"sesion_cerrada\"}"
         ]
       }
     }

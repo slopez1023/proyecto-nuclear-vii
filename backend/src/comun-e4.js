@@ -45,14 +45,25 @@ function intervaloPorActivos(activos) {
  * Estado de votación del dispositivo (`mi_votacion`) a partir del contador de la sección 5.3.
  * @param {{ultimoVoto:number|null, contadas:number}} contador
  */
-function calcularMiVotacion({ ultimoVoto, contadas }, intervalo) {
+function calcularMiVotacion({ ultimoVoto, contadas }, intervalo, { ocioso = false } = {}) {
+  // H1 (decisión de cierre del E4): si no suena nada y no hay nada en espera, el intervalo no tiene a quién proteger
+  // (nadie puede acaparar una cola vacía) y bloquear a todos dejaría el sistema detenido cuando participan pocos
+  // dispositivos. En ese estado de inactividad se puede pedir. Los votos siguen siendo definitivos y, tras pedir,
+  // el contador vuelve a cero y el intervalo se aplica con normalidad.
+  if (ocioso) {
+    return {
+      puede_votar: true,
+      intervalo_canciones: intervalo,
+      reproducciones_contadas: ultimoVoto === null || ultimoVoto === undefined ? 0 : contadas,
+      canciones_restantes: 0,
+    };
+  }
   // H4: un dispositivo que nunca votó en el establecimiento tiene voto disponible.
   if (ultimoVoto === null || ultimoVoto === undefined) {
     return { puede_votar: true, intervalo_canciones: intervalo, reproducciones_contadas: 0, canciones_restantes: 0 };
   }
   // H1: con la regla tal como está escrita, si los dispositivos que participan son <= intervalo la cola
-  // puede quedar vacía sin que nadie recupere el voto. NO hay regla de respaldo (pendiente del equipo);
-  // si se decide una (p. ej. "cola vacía y nada sonando → todos recuperan el voto"), va aquí.
+  // podía quedar vacía sin que nadie recuperara el voto: se resuelve con la regla de inactividad de arriba.
   const restantes = Math.max(0, intervalo - contadas);
   return {
     puede_votar: restantes === 0,

@@ -48,6 +48,16 @@ async function obtenerSesion(q, idSesion) {
   return rows[0] || null;
 }
 
+/** Sesión por el token de su QR, con el nombre del establecimiento (el acceso del E3 usa la MISMA fuente que el E4). */
+async function obtenerSesionPorToken(q, token) {
+  const { rows } = await q.query(
+    `SELECT s.id_sesion, s.id_establecimiento, e.nombre, s.estado, s.qr_estado
+     FROM sesion s JOIN establecimiento e ON e.id_establecimiento = s.id_establecimiento WHERE s.qr_token = $1`,
+    [token],
+  );
+  return rows[0] || null;
+}
+
 /**
  * Bloquea (FOR UPDATE) el establecimiento y después la sesión. Orden fijo establecimiento → sesión en
  * todas las transacciones, para evitar interbloqueos. Serializa el cálculo del intervalo (que es por
@@ -259,10 +269,11 @@ async function contadorIntervalo(q, idDispositivo, idEstablecimiento) {
 
 async function reproduccionEnCurso(q, idSesion, { bloquear = false } = {}) {
   const { rows } = await q.query(
-    `SELECT r.id_reproduccion, r.id_solicitud, r.id_cancion, r.inicio_en, r.origen,
+    `SELECT r.id_reproduccion, r.id_solicitud, r.id_cancion, r.inicio_en, r.origen, s.fecha_solicitud,
             c.youtube_video_id, c.titulo, c.artista_canal, c.duracion_segundos, c.url_miniatura,
             (SELECT COUNT(*) FROM voto v WHERE v.id_solicitud = r.id_solicitud) AS total_votos
      FROM reproduccion r JOIN cancion c ON c.id_cancion = r.id_cancion
+     LEFT JOIN solicitud s ON s.id_solicitud = r.id_solicitud
      WHERE r.id_sesion = $1 AND r.resultado = 'en_curso'${bloquear ? ' FOR UPDATE OF r' : ''}`,
     [idSesion],
   );
@@ -287,6 +298,7 @@ async function cerrarReproduccion(client, idReproduccion, { fin, resultado, segu
 }
 
 module.exports = {
+  obtenerSesionPorToken,
   conTransaccion,
   upsertEstablecimiento, upsertSesion, obtenerSesion, bloquearEstablecimientoYSesion,
   incrementarVersion, incrementarVersionEstablecimiento,

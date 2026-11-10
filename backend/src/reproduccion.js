@@ -52,10 +52,13 @@ function crearReproduccion({ pool, cola, ahora, almacenEventos, alCambiar: avisa
 
   const actualJson = (actual) => cola.reproduccionActualJson(actual, restanteActual(actual, ahora()));
 
-  function eventoInicio(idSesion, actual, origen) {
-    evento({ tipo: 'reproduccion_iniciada', sesion_id: idSesion,
+  function eventoInicio(idSesion, idEstablecimiento, actual, origen) {
+    // A5: segundos que la solicitud esperó en la cola (null si no viene de una solicitud).
+    const enCola = actual.fecha_solicitud === null || actual.fecha_solicitud === undefined
+      ? null : Math.max(0, Math.floor((actual.inicio_en - actual.fecha_solicitud) / 1000));
+    evento({ tipo: 'reproduccion_iniciada', sesion_id: idSesion, id_establecimiento: idEstablecimiento,
       datos_evento: { id_reproduccion: idTexto('REP', actual.id_reproduccion), id_solicitud: idTexto('SOL', actual.id_solicitud),
-        youtube_video_id: actual.youtube_video_id, total_votos: actual.total_votos, origen } });
+        youtube_video_id: actual.youtube_video_id, total_votos: actual.total_votos, origen, segundos_en_cola: enCola } });
   }
 
   /** Dentro de la transacción: bloqueo establecimiento → sesión y nueva comprobación de estado. */
@@ -76,7 +79,7 @@ function crearReproduccion({ pool, cola, ahora, almacenEventos, alCambiar: avisa
       await repo.incrementarVersion(client, idSesion);
       return nueva;
     });
-    eventoInicio(idSesion, actual, origen);
+    eventoInicio(idSesion, previa.id_establecimiento, actual, origen);
     alCambiar(idSesion);
     return { reproduccion_actual: actualJson(actual) };
   }
@@ -98,12 +101,21 @@ function crearReproduccion({ pool, cola, ahora, almacenEventos, alCambiar: avisa
     // Después del COMMIT. No hay contadores que actualizar: el intervalo se CALCULA (sección 5.3).
     const a = r.anterior;
     const comun = { id_reproduccion: idTexto('REP', a.id_reproduccion), id_solicitud: idTexto('SOL', a.id_solicitud), segundos_reproducidos: segundos };
+    // A7: el cierre repite la canción y los votos para no depender de uniones en el análisis.
+    const contexto = { youtube_video_id: a.youtube_video_id, total_votos: a.total_votos };
+    const idEst = previa.id_establecimiento; // A1
     if (resultado === 'exitosa') {
-      evento({ tipo: 'reproduccion_finalizada', sesion_id: idSesion, datos_evento: { ...comun, origen } });
+      evento({ tipo: 'reproduccion_finalizada', sesion_id: idSesion, id_establecimiento: idEst, datos_evento: { ...comun, ...contexto, origen } });
     } else {
-      evento({ tipo: 'reproduccion_fallida', sesion_id: idSesion, datos_evento: { ...comun, codigo_error: codigoError, origen } });
+      evento({ tipo: 'reproduccion_fallida', sesion_id: idSesion, id_establecimiento: idEst,
+        datos_evento: { ...comun, ...contexto, codigo_error: codigoError, origen } });
     }
-    if (r.nueva) eventoInicio(idSesion, r.nueva, origen);
+    if (r.nueva) {
+      eventoInicio(idSesion, idEst, r.nueva, origen);
+    } else {
+      // A3: la cola se agotó. Con la regla de inactividad (H1) este es el momento en que todos recuperan el voto.
+      evento({ tipo: 'cola_vacia', sesion_id: idSesion, id_establecimiento: idEst, datos_evento: { id_reproduccion: comun.id_reproduccion, origen } });
+    }
     alCambiar(idSesion);
     return {
       anterior: { id_reproduccion: comun.id_reproduccion, id_solicitud: comun.id_solicitud, resultado },

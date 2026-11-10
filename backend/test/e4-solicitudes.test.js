@@ -201,14 +201,20 @@ test('P2: solicitud inexistente, de otra sesión o con id mal formado → 404 so
   assert.equal((await e.pedir('POST', `/api/sesiones/${SESION}/solicitudes/${deOtra}/votos`)).body.error.codigo, 'dispositivo_id_invalido');
 }));
 
-test('H3c: voto manual sobre una canción en reproducción, reproducida o fallida → 409 solicitud_no_votable', conEntorno(async (e) => {
+test('H3c (decisión de cierre): voto manual sobre una canción en reproducción → 201; reproducida o fallida → 409 solicitud_no_votable', conEntorno(async (e) => {
   const id = (await e.solicitar(A, cancion(1))).body.solicitud.id_solicitud;
+  await e.solicitar(C, cancion(2)); // para que haya otra después y se pueda probar también una fallida
   await e.iniciar();
-  assert.equal((await e.votar(B, id)).body.error.codigo, 'solicitud_no_votable');
+  const sonando = await e.votar(B, id);
+  assert.equal(sonando.status, 201);
+  assert.equal(sonando.body.solicitud.estado, 'en_reproduccion');
+  assert.equal(sonando.body.solicitud.total_votos, 2);
   await e.siguiente('exitosa');
-  const r = await e.votar(B, id);
+  const r = await e.votar(uuid(4), id);
   assert.equal(r.status, 409);
   assert.equal(r.body.error.codigo, 'solicitud_no_votable');
+  await e.siguiente('fallida', { codigo_error: 'video_no_reproducible' });
+  assert.equal((await e.votar(uuid(4), 'SOL-2')).body.error.codigo, 'solicitud_no_votable');
 }));
 
 test('C6: no existe operación para cambiar ni retirar un voto (405)', conEntorno(async (e) => {
@@ -291,6 +297,7 @@ test('C15: canción fuera del catálogo → 422 cancion_no_permitida con motivo;
   assert.equal(e.youtube.llamadas.length, llamadas);
   const rechazo = e.eventos.find((x) => x.tipo === 'solicitud_rechazada');
   assert.equal(rechazo.datos_evento.motivo, 'cancion_no_permitida');
+  assert.equal(rechazo.datos_evento.motivo_catalogo, 'no_musica'); // A6: el sub-motivo del catálogo
 }));
 
 test('C16: los datos de la canción enviados por el cliente se ignoran; el backend usa los suyos', conEntorno(async (e) => {
@@ -325,11 +332,13 @@ test('eventos: solicitud creada (2 eventos), voto sumado (1), rechazo (1), voto 
   const s = (await e.solicitar(A, cancion(1))).body.solicitud.id_solicitud;
   assert.deepEqual(e.eventos.map((x) => x.tipo), ['solicitud_creada', 'voto_registrado']);
   const [creada, voto] = e.eventos;
-  assert.deepEqual(creada.datos_evento, { id_solicitud: s, youtube_video_id: cancion(1), duracion_segundos: 200, posicion_inicial: 1, dispositivos_activos: 0 });
-  assert.deepEqual(voto.datos_evento, { id_solicitud: s, origen: 'solicitud', total_votos: 1, posicion_antes: null, posicion_despues: 1, intervalo_canciones: 2 });
+  assert.deepEqual(creada.datos_evento, { id_solicitud: s, youtube_video_id: cancion(1), duracion_segundos: 200, posicion_inicial: 1, dispositivos_activos: 0, espera_estimada_segundos: 0 });
+  assert.deepEqual(voto.datos_evento, { id_solicitud: s, origen: 'solicitud', total_votos: 1, posicion_antes: null, posicion_despues: 1, intervalo_canciones: 2,
+    sumado_a_existente: false, estado_solicitud: 'pendiente', por_inactividad: false });
   for (const ev of e.eventos) {
     assert.equal(ev.actor, 'servidor');
-    assert.equal(ev.version_esquema, '1.1');
+    assert.equal(ev.id_establecimiento, 'EST-MOCK-001'); // A1
+    assert.equal(ev.version_esquema, '1.2');
     assert.equal(ev.dispositivo_id, A);
     assert.equal(ev.sesion_id, SESION);
     assert.equal(ev.fecha_hora, '2026-11-10T20:00:00.000Z');
@@ -338,6 +347,7 @@ test('eventos: solicitud creada (2 eventos), voto sumado (1), rechazo (1), voto 
   await e.solicitar(B, cancion(1));
   assert.deepEqual(e.eventos.map((x) => x.tipo), ['voto_registrado']);
   assert.equal(e.eventos[0].datos_evento.posicion_antes, 1);
+  assert.equal(e.eventos[0].datos_evento.sumado_a_existente, true); // A2: voto sumado a una solicitud que ya existía
   e.eventos.length = 0;
   await e.solicitar(A, cancion(2));
   assert.deepEqual(e.eventos.map((x) => [x.tipo, x.datos_evento.motivo, x.datos_evento.canciones_restantes]),

@@ -86,7 +86,7 @@ class AccesoViewModelTest {
 
         val estado = vm.estadoFinal() as AccesoEstado.Valido
 
-        assertEquals(Sesion("SES-1", "Bar Demo", provisional = true), estado.sesion)
+        assertEquals(Sesion("SES-1", "Bar Demo", provisional = true, idEstablecimiento = "EST-1"), estado.sesion)
         assertEquals(dispositivos.obtenerId(), estado.dispositivoId)
     }
 
@@ -146,7 +146,7 @@ class AccesoViewModelTest {
         val estado = vm.estadoFinal() as AccesoEstado.Valido
 
         assertEquals(listOf<Evento>(Evento.DispositivoUnido("SES-1", estado.dispositivoId, recurrente = false)), eventos.eventos)
-        assertEquals(SesionActiva("SES-1", estado.dispositivoId), sesionActiva.actual)
+        assertEquals(SesionActiva("SES-1", estado.dispositivoId, idEstablecimiento = "EST-1"), sesionActiva.actual)
     }
 
     @Test
@@ -186,5 +186,26 @@ class AccesoViewModelTest {
         vm.estadoFinal()
 
         assertEquals(1, eventos.eventos.size)
+    }
+
+    @Test
+    fun sesionValida_seGuardaParaRecuperarlaSiElProcesoSeRecrea() = runTest {
+        val almacen = DataStoreEnMemoria()
+        val local = co.edu.cue.nuclear.cliente.data.sesion.SesionLocal(almacen)
+        val vm = AccesoViewModel("tok-valido-0001", SesionRepository(apiQueResponde(Response.success(sesionOk))), dispositivos, eventos, sesionActiva, local)
+
+        vm.estadoFinal()
+
+        assertEquals(co.edu.cue.nuclear.cliente.data.sesion.SesionGuardada("SES-1", "EST-1"), local.leer())
+    }
+
+    @Test
+    fun qrRechazado_noGuardaNingunaSesion() = runTest {
+        val local = co.edu.cue.nuclear.cliente.data.sesion.SesionLocal(DataStoreEnMemoria())
+        val vm = AccesoViewModel("tok-cerrado-0001", SesionRepository(apiQueResponde(rechazo(410, "sesion_cerrada"))), dispositivos, eventos, sesionActiva, local)
+
+        vm.estadoFinal()
+
+        assertEquals(null, local.leer())
     }
 }

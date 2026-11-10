@@ -25,7 +25,7 @@ class SesionRepository(
         if (respuesta.isSuccessful) {
             val cuerpo = respuesta.body() ?: return ResultadoAcceso.ErrorServidor
             return ResultadoAcceso.Valido(
-                Sesion(cuerpo.idSesion, cuerpo.establecimiento.nombre, cuerpo.provisional),
+                Sesion(cuerpo.idSesion, cuerpo.establecimiento.nombre, cuerpo.provisional, cuerpo.establecimiento.idEstablecimiento),
             )
         }
         return mapearError(respuesta.code(), respuesta.errorBody()?.string())

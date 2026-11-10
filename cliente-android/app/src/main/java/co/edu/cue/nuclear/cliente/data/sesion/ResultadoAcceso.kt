@@ -5,6 +5,8 @@ data class Sesion(
     val nombreEstablecimiento: String,
     /** La sesión proviene de datos simulados del backend (no de un módulo de sesiones real). */
     val provisional: Boolean,
+    /** `establecimiento.id_establecimiento` de la respuesta de acceso (contrato del E3). Se conserva por si el E4 lo necesita. */
+    val idEstablecimiento: String? = null,
 )
 
 /** Motivos de rechazo del QR; el código coincide con `error.codigo` del backend. */

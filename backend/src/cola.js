@@ -69,7 +69,7 @@ const votoJson = (v) => ({
  */
 function crearCola({ pool, catalogo, conectividad, ahora, almacenEventos, alCambiar }) {
   const ahoraDate = () => new Date(ahora());
-  const evento = (datos) => registrarEventoServidor(almacenEventos, datos, ahoraDate);
+  const emitir = (datos) => registrarEventoServidor(almacenEventos, datos, ahoraDate);
   const avisar = (idSesion) => {
     try { alCambiar(idSesion); } catch (err) { console.error('[cola] aviso de cambio falló:', err.message); }
   };
@@ -88,8 +88,8 @@ function crearCola({ pool, catalogo, conectividad, ahora, almacenEventos, alCamb
 
   const intervaloVigente = (idEst) => intervaloPorActivos(conectividad.contarActivos(idEst));
 
-  async function miVotacion(q, idDispositivo, idEst) {
-    return calcularMiVotacion(await repo.contadorIntervalo(q, idDispositivo, idEst), intervaloVigente(idEst));
+  async function miVotacion(q, idDispositivo, idEst, { ocioso = false } = {}) {
+    return calcularMiVotacion(await repo.contadorIntervalo(q, idDispositivo, idEst), intervaloVigente(idEst), { ocioso });
   }
 
   // ------------------------------------------------------------ estado de la cola (C1 y SSE)
@@ -120,9 +120,12 @@ function crearCola({ pool, catalogo, conectividad, ahora, almacenEventos, alCamb
       reglas_votacion: base.reglas,
     };
     if (personal) {
+      // H1: sin nada sonando ni en espera, el intervalo no bloquea (ver calcularMiVotacion).
+      const ocioso = !base.actual && base.pendientes.length === 0;
       estado.mi_votacion = calcularMiVotacion(
         await repo.contadorIntervalo(q, idDispositivo, base.sesion.id_establecimiento),
         base.reglas.intervalo_canciones,
+        { ocioso },
       );
     }
     estado.cola = base.pendientes.map((f, i) => solicitudJson(f, { posicion: i + 1, espera: base.esperas[i] },
@@ -183,8 +186,10 @@ function crearCola({ pool, catalogo, conectividad, ahora, almacenEventos, alCamb
       throw new ErrorApi(409, 'voto_duplicado', 'Este dispositivo ya votó por esta canción.',
         { id_solicitud: idTexto('SOL', viva.id_solicitud) });
     }
-    // 4.4 Intervalo
-    const mvAntes = await miVotacion(client, idDispositivo, idEst);
+    // 4.4 Intervalo (con la regla de inactividad de H1: cola vacía y nada sonando → se puede pedir)
+    const ocioso = !viva && antes.length === 0 && !(await repo.reproduccionEnCurso(client, idSesion));
+    const mvNormal = await miVotacion(client, idDispositivo, idEst);
+    const mvAntes = ocioso ? await miVotacion(client, idDispositivo, idEst, { ocioso: true }) : mvNormal;
     if (!mvAntes.puede_votar) {
       throw errorIntervalo(mvAntes, 'Todavía no tienes otro voto disponible, por eso no puedes solicitar otra canción.');
     }
@@ -211,6 +216,9 @@ function crearCola({ pool, catalogo, conectividad, ahora, almacenEventos, alCamb
         totalVotos: vista.totalVotos,
         intervalo: mvAntes.intervalo_canciones,
         activos: conectividad.contarActivos(idEst),
+        espera: vista.json.espera_estimada_segundos,
+        estadoSolicitud: vista.json.estado,
+        porInactividad: mvAntes.puede_votar && !mvNormal.puede_votar,
       },
     };
   }
@@ -222,13 +230,15 @@ function crearCola({ pool, catalogo, conectividad, ahora, almacenEventos, alCamb
    */
   async function solicitar({ idSesion, uuid, youtubeVideoId }) {
     const sesion = await obtenerSesionActiva(idSesion);
+    const evento = (datos) => emitir({ ...datos, id_establecimiento: sesion.id_establecimiento }); // A1
     let cancion;
     try {
       cancion = await catalogo.validar(youtubeVideoId);
     } catch (err) {
       if (err instanceof ErrorApi && err.codigo === 'cancion_no_permitida') {
         evento({ tipo: 'solicitud_rechazada', sesion_id: idSesion, dispositivo_id: uuid,
-          datos_evento: { youtube_video_id: youtubeVideoId, motivo: err.codigo, canciones_restantes: null } });
+          datos_evento: { youtube_video_id: youtubeVideoId, motivo: err.codigo, canciones_restantes: null,
+            motivo_catalogo: err.detalle && err.detalle.motivo ? err.detalle.motivo : null } }); // A6
       }
       throw err;
     }
@@ -258,11 +268,14 @@ function crearCola({ pool, catalogo, conectividad, ahora, almacenEventos, alCamb
     if (r.creada) {
       evento({ tipo: 'solicitud_creada', sesion_id: idSesion, dispositivo_id: uuid,
         datos_evento: { id_solicitud: idTexto('SOL', a.idSolicitud), youtube_video_id: cancion.youtube_video_id,
-          duracion_segundos: cancion.duracion_segundos, posicion_inicial: a.posicionDespues, dispositivos_activos: a.activos } });
+          duracion_segundos: cancion.duracion_segundos, posicion_inicial: a.posicionDespues, dispositivos_activos: a.activos,
+          espera_estimada_segundos: a.espera } }); // A5
     }
+    // A2: sumado_a_existente distingue el voto de una solicitud NUEVA del voto sumado a una que ya existía (200).
     evento({ tipo: 'voto_registrado', sesion_id: idSesion, dispositivo_id: uuid,
       datos_evento: { id_solicitud: idTexto('SOL', a.idSolicitud), origen: 'solicitud', total_votos: a.totalVotos,
-        posicion_antes: a.posicionAntes, posicion_despues: a.posicionDespues, intervalo_canciones: a.intervalo } });
+        posicion_antes: a.posicionAntes, posicion_despues: a.posicionDespues, intervalo_canciones: a.intervalo,
+        sumado_a_existente: !r.creada, estado_solicitud: a.estadoSolicitud, por_inactividad: a.porInactividad } });
     avisar(idSesion);
     return { status: r.creada ? 201 : 200, cuerpo: r.respuesta };
   }
@@ -277,8 +290,10 @@ function crearCola({ pool, catalogo, conectividad, ahora, almacenEventos, alCamb
     // 4.2 La solicitud es de esta sesión y está pendiente
     const solicitud = idSolicitud === null ? null : await repo.obtenerSolicitud(client, idSesion, idSolicitud);
     if (!solicitud) throw new ErrorApi(404, 'solicitud_inexistente', 'La solicitud no existe en esta sesión.');
-    // H3c: el voto manual sobre una canción en reproducción NO se permite (solo 'pendiente').
-    if (solicitud.estado !== 'pendiente') {
+    // H3c (decisión de cierre del E4): se puede votar una solicitud pendiente O la que está sonando, igual que pedir una
+    // canción que suena ya suma voto (decisión 1B). Así las dos vías son coherentes y no hay un 409 por perder la
+    // carrera contra el inicio de la canción. Terminada (reproducida) o fallida: ya no se puede votar.
+    if (solicitud.estado !== 'pendiente' && solicitud.estado !== 'en_reproduccion') {
       throw new ErrorApi(409, 'solicitud_no_votable', 'Esta canción ya no se puede votar.');
     }
     // 4.3 Voto duplicado (incluye votar la solicitud propia, caso A9)
@@ -297,13 +312,14 @@ function crearCola({ pool, catalogo, conectividad, ahora, almacenEventos, alCamb
     return {
       respuesta: { voto: votoJson(voto), solicitud: vista.json, mi_votacion: await miVotacion(client, idDispositivo, idEst) },
       analitica: { posicionAntes: posicionDe(antes, idSolicitud), posicionDespues: vista.posicion,
-        totalVotos: vista.totalVotos, intervalo: mvAntes.intervalo_canciones },
+        totalVotos: vista.totalVotos, intervalo: mvAntes.intervalo_canciones, estadoSolicitud: vista.json.estado },
     };
   }
 
   /** P2. `idSolicitud` es el número ya extraído de "SOL-n" (null si el texto no tenía ese formato). */
   async function votar({ idSesion, idSolicitud, uuid }) {
     const sesion = await obtenerSesionActiva(idSesion);
+    const evento = (datos) => emitir({ ...datos, id_establecimiento: sesion.id_establecimiento }); // A1
     const idDispositivo = await registrarDispositivo(uuid, idSesion);
     let r;
     try {
@@ -319,7 +335,8 @@ function crearCola({ pool, catalogo, conectividad, ahora, almacenEventos, alCamb
     const a = r.analitica;
     evento({ tipo: 'voto_registrado', sesion_id: idSesion, dispositivo_id: uuid,
       datos_evento: { id_solicitud: idTexto('SOL', idSolicitud), origen: 'manual', total_votos: a.totalVotos,
-        posicion_antes: a.posicionAntes, posicion_despues: a.posicionDespues, intervalo_canciones: a.intervalo } });
+        posicion_antes: a.posicionAntes, posicion_despues: a.posicionDespues, intervalo_canciones: a.intervalo,
+        sumado_a_existente: false, estado_solicitud: a.estadoSolicitud, por_inactividad: false } });
     avisar(idSesion);
     return { status: 201, cuerpo: r.respuesta };
   }
