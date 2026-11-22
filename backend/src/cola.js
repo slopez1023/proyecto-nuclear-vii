@@ -68,6 +68,10 @@ const votoJson = (v) => ({
  *          almacenEventos:{guardar:Function}, alCambiar:(idSesion:string)=>void}} deps
  */
 function crearCola({ pool, catalogo, conectividad, ahora, almacenEventos, alCambiar }) {
+  let validadorBloqueos = async () => false;
+  const setValidadorBloqueos = (fn) => {
+    validadorBloqueos = typeof fn === 'function' ? fn : async () => false;
+  };
   const ahoraDate = () => new Date(ahora());
   const emitir = (datos) => registrarEventoServidor(almacenEventos, datos, ahoraDate);
   const avisar = (idSesion) => {
@@ -176,6 +180,9 @@ function crearCola({ pool, catalogo, conectividad, ahora, almacenEventos, alCamb
     const idEst = sesionPrevia.id_establecimiento;
     const sesion = verificarSesion(await repo.bloquearEstablecimientoYSesion(client, idEst, idSesion));
     const t = ahora();
+    if (await validadorBloqueos(client, idEst, cancion.id_cancion, t)) {
+      throw new ErrorApi(403, 'cancion_bloqueada', 'Esta canción está bloqueada temporalmente en este establecimiento.');
+    }
     const antes = await repo.leerColaPendiente(client, idSesion);
 
     // 4.1 Solicitud viva (pendiente o en reproducción) de esa canción: no se duplica (decisión 1B).
@@ -255,7 +262,7 @@ function crearCola({ pool, catalogo, conectividad, ahora, almacenEventos, alCamb
         r = await repo.conTransaccion(pool, (c) => solicitarEnTransaccion(c, sesion, idDispositivo, cancion));
       }
     } catch (err) {
-      if (err instanceof ErrorApi && (err.codigo === 'intervalo_no_cumplido' || err.codigo === 'voto_duplicado')) {
+      if (err instanceof ErrorApi && (err.codigo === 'intervalo_no_cumplido' || err.codigo === 'voto_duplicado' || err.codigo === 'cancion_bloqueada')) {
         evento({ tipo: 'solicitud_rechazada', sesion_id: idSesion, dispositivo_id: uuid,
           datos_evento: { youtube_video_id: youtubeVideoId, motivo: err.codigo,
             canciones_restantes: err.detalle && err.detalle.canciones_restantes !== undefined ? err.detalle.canciones_restantes : null } });
@@ -290,6 +297,9 @@ function crearCola({ pool, catalogo, conectividad, ahora, almacenEventos, alCamb
     // 4.2 La solicitud es de esta sesión y está pendiente
     const solicitud = idSolicitud === null ? null : await repo.obtenerSolicitud(client, idSesion, idSolicitud);
     if (!solicitud) throw new ErrorApi(404, 'solicitud_inexistente', 'La solicitud no existe en esta sesión.');
+    if (await validadorBloqueos(client, idEst, solicitud.id_cancion, t)) {
+      throw new ErrorApi(403, 'cancion_bloqueada', 'Esta canción está bloqueada temporalmente en este establecimiento.');
+    }
     // H3c (decisión de cierre del E4): se puede votar una solicitud pendiente O la que está sonando, igual que pedir una
     // canción que suena ya suma voto (decisión 1B). Así las dos vías son coherentes y no hay un 409 por perder la
     // carrera contra el inicio de la canción. Terminada (reproducida) o fallida: ya no se puede votar.
@@ -342,7 +352,7 @@ function crearCola({ pool, catalogo, conectividad, ahora, almacenEventos, alCamb
   }
 
   return {
-    obtenerSesionActiva, verificarSesion, registrarDispositivo,
+    obtenerSesionActiva, verificarSesion, registrarDispositivo, setValidadorBloqueos,
     estadoBase, personalizar, estadoCola,
     solicitar, votar,
     reproduccionActualJson,
