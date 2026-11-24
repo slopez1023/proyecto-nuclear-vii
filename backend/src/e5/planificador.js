@@ -28,13 +28,22 @@ function crearPlanificador({ pool, sesionesAdmin, reproductor, ahora, intervaloM
 
         if (ev.abierto) {
           const qrEsperado = cfg.pausa_manual ? 'inactivo' : 'activo';
-          if (sesion.estado !== 'activa') {
-            await sesionesAdmin.activarSesion(cfg.id_establecimiento, sesion.id_sesion, null, { origen: 'horario', activarQr: !cfg.pausa_manual });
-          } else if (sesion.qr_estado !== qrEsperado) {
-            await sesionesAdmin.cambiarEstadoQr(cfg.id_establecimiento, sesion.id_sesion, !cfg.pausa_manual, null, { origen: 'horario' });
+          const bloqueadaPerm = await repo5.estaQrDesactivado(pool, sesion.id_sesion);
+          if (!bloqueadaPerm) {
+            if (sesion.estado !== 'activa') {
+              await sesionesAdmin.activarSesion(cfg.id_establecimiento, sesion.id_sesion, null, { origen: 'horario', activarQr: !cfg.pausa_manual });
+            } else if (sesion.qr_estado !== qrEsperado) {
+              await sesionesAdmin.cambiarEstadoQr(cfg.id_establecimiento, sesion.id_sesion, !cfg.pausa_manual, null, { origen: 'horario' });
+            }
           }
-        } else if (sesion.estado === 'activa' || sesion.qr_estado === 'activo') {
-          await sesionesAdmin.desactivarSesion(cfg.id_establecimiento, sesion.id_sesion, null, { origen: 'horario', limpiarCola: true });
+        } else {
+          // Fuera de horario: cierra la sesión principal y cualquier otra sesión activa del establecimiento
+          const sesionesEst = await repo5.listarSesiones(pool, cfg.id_establecimiento);
+          for (const s of sesionesEst) {
+            if (s.estado === 'activa' || s.qr_estado === 'activo') {
+              await sesionesAdmin.desactivarSesion(cfg.id_establecimiento, s.id_sesion, null, { origen: 'horario', limpiarCola: true });
+            }
+          }
         }
       }
       await reproductor.verificarEspera();

@@ -6,6 +6,7 @@
  */
 const express = require('express');
 const repo5 = require('./repositorio-e5');
+const analitica = require('./analitica');
 const { ErrorApi, manejar, iso } = require('./comun-e5');
 
 const idEntero = (valor, nombre) => {
@@ -49,8 +50,12 @@ function crearRouterE5({ pool, youtube, auth, sesionesAdmin, bloqueos, listas, r
     const horario = await sesionesAdmin.resumenHorario(pool, idEst, cfg);
     const listasResumen = await listas.listar(idEst);
     const bloqueosActivos = await bloqueos.listar(idEst);
-    const sesionObj = sesiones.find((s) => s.id_sesion === (req.query.sesion || cfg.id_sesion_principal))
-      || sesiones.find((s) => s.estado === 'activa') || sesiones[0] || null;
+    const sesionObj = (req.query.sesion ? sesiones.find((s) => s.id_sesion === req.query.sesion) : null)
+      || sesiones.find((s) => s.id_sesion === cfg.id_sesion_principal && s.estado === 'activa')
+      || sesiones.find((s) => s.estado === 'activa')
+      || sesiones.find((s) => s.id_sesion === cfg.id_sesion_principal)
+      || sesiones[0]
+      || null;
     const rep = sesionObj ? await reproductor.estadoActual(idEst, sesionObj.id_sesion) : null;
     const activos = conectividad ? conectividad.contarActivos(idEst) : 0;
 
@@ -216,6 +221,21 @@ function crearRouterE5({ pool, youtube, auth, sesionesAdmin, bloqueos, listas, r
   router.get('/registro', operador, manejar(async (req, res) => {
     const filas = await repo5.leerRegistro(pool, req.usuario.id_establecimiento, 50);
     res.json({ registros: filas.map((r) => ({ ...r, fecha: iso(r.fecha) })) });
+  }));
+
+  // ------------------------------------------------------------ analítica y pipeline de eventos
+  router.get('/analitica', operador, manejar(async (req, res) => {
+    const idSesion = typeof req.query.sesion === 'string' && req.query.sesion.trim() ? req.query.sesion.trim() : null;
+    res.json(await analitica.obtenerTablero({
+      pool,
+      idEst: req.usuario.id_establecimiento,
+      idSesion,
+      ahora,
+    }));
+  }));
+
+  router.post('/analitica/ingesta', soloAdmin, manejar(async (_req, res) => {
+    res.json(await analitica.ejecutarPipeline({ pool, ahora }));
   }));
 
   return router;

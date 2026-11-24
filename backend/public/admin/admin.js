@@ -14,6 +14,8 @@
     bloqueos: [],
     mantenimiento: null,
     registro: [],
+    analitica: null,
+    analiticaAlcance: 'establecimiento',
     catalogoResultados: [],
     ytPlayer: null,
     ytVideoCargado: null,
@@ -51,6 +53,54 @@
     document.body.appendChild(d);
   }
 
+  function pedirBloqueoModal(titulo) {
+    return new Promise((resolve) => {
+      const prev = document.getElementById('modal-bloq');
+      if (prev) prev.remove();
+      const wrap = document.createElement('div');
+      wrap.id = 'modal-bloq';
+      wrap.className = 'modal-backdrop';
+      wrap.innerHTML = `
+        <form id="m-bloq-form" class="modal-card">
+          <div class="eyebrow">Bloqueo de contenido</div>
+          <h2 style="margin-top:6px">Bloquear canción</h2>
+          <p class="muted" style="margin-top:0">${esc(titulo)}</p>
+          <div style="margin-top:14px">
+            <label for="m-bloq-mot">Motivo del bloqueo</label>
+            <input id="m-bloq-mot" value="Contenido no permitido" maxlength="300" required>
+          </div>
+          <div style="margin-top:12px">
+            <label for="m-bloq-min">Duración (minutos)</label>
+            <input id="m-bloq-min" type="number" min="1" max="43200" value="120" required>
+          </div>
+          <div class="row mt" style="justify-content:flex-end">
+            <button type="button" id="m-bloq-cancel" class="btn">Cancelar</button>
+            <button type="submit" class="btn danger">Bloquear canción</button>
+          </div>
+        </form>`;
+      document.body.appendChild(wrap);
+      const inp = document.getElementById('m-bloq-mot');
+      inp.focus();
+      inp.select();
+      const cerrar = (val) => {
+        window.removeEventListener('keydown', onKey);
+        wrap.remove();
+        resolve(val);
+      };
+      const onKey = (ev) => { if (ev.key === 'Escape') cerrar(null); };
+      window.addEventListener('keydown', onKey);
+      wrap.addEventListener('click', (ev) => { if (ev.target === wrap) cerrar(null); });
+      document.getElementById('m-bloq-cancel').addEventListener('click', () => cerrar(null));
+      document.getElementById('m-bloq-form').addEventListener('submit', (ev) => {
+        ev.preventDefault();
+        cerrar({
+          motivo: inp.value.trim() || 'Bloqueada por operador',
+          duracion_minutos: Math.max(1, Number(document.getElementById('m-bloq-min').value) || 120),
+        });
+      });
+    });
+  }
+
   async function api(metodo, ruta, body) {
     const headers = { 'X-Ponga-Admin': '1' };
     if (body !== undefined) headers['Content-Type'] = 'application/json';
@@ -80,6 +130,14 @@
   function sincronizarYoutube() {
     const cont = document.getElementById('yt-player-slot');
     if (!cont || !window.YT || !window.YT.Player) return;
+    if (state.ytPlayer) {
+      const iframe = typeof state.ytPlayer.getIframe === 'function' ? state.ytPlayer.getIframe() : null;
+      if (!iframe || !document.body.contains(iframe)) {
+        try { state.ytPlayer.destroy(); } catch {}
+        state.ytPlayer = null;
+        state.ytVideoCargado = null;
+      }
+    }
     const rep = state.panel && state.panel.reproduccion;
     const actual = rep && rep.actual;
     const vid = actual && actual.cancion ? actual.cancion.youtube_video_id : null;
@@ -96,6 +154,12 @@
         videoId: vid,
         playerVars: { autoplay: rep.estado_reproduccion === 'reproduciendo' ? 1 : 0, rel: 0 },
         events: {
+          onReady(ev) {
+            const est = state.panel && state.panel.reproduccion && state.panel.reproduccion.estado_reproduccion;
+            if (est === 'reproduciendo' && typeof ev.target.playVideo === 'function') {
+              try { ev.target.playVideo(); } catch {}
+            }
+          },
           onStateChange(ev) {
             if (ev.data === window.YT.PlayerState.ENDED) {
               const seg = Math.floor(state.ytPlayer.getCurrentTime ? state.ytPlayer.getCurrentTime() : 0);
@@ -123,8 +187,16 @@
   async function cargarPanel() {
     const q = state.sesionId ? `?sesion=${encodeURIComponent(state.sesionId)}` : '';
     state.panel = await api('GET', '/panel' + q);
-    if (!state.sesionId && state.panel.reproduccion) state.sesionId = state.panel.reproduccion.id_sesion;
-    if (!state.sesionId && state.panel.sesiones[0]) state.sesionId = state.panel.sesiones[0].id_sesion;
+    const actualEnLista = state.panel.sesiones.find((s) => s.id_sesion === state.sesionId);
+    const primeraActiva = state.panel.sesiones.find((s) => s.estado === 'activa');
+    if ((!actualEnLista || (actualEnLista.estado !== 'activa' && primeraActiva)) && primeraActiva) {
+      state.sesionId = primeraActiva.id_sesion;
+      state.panel = await api('GET', `/panel?sesion=${encodeURIComponent(state.sesionId)}`);
+    } else if (!state.sesionId && state.panel.reproduccion) {
+      state.sesionId = state.panel.reproduccion.id_sesion;
+    } else if (!state.sesionId && state.panel.sesiones[0]) {
+      state.sesionId = state.panel.sesiones[0].id_sesion;
+    }
     if (state.tab === 'bloqueos') state.bloqueos = (await api('GET', '/bloqueos')).bloqueos;
     if (state.tab === 'mantenimiento' && state.sesionId) {
       if (state.usuario.rol === 'admin') state.mantenimiento = await api('GET', `/sesiones/${state.sesionId}/mantenimiento`);
@@ -132,6 +204,10 @@
     }
     if (state.tab === 'listas' && state.listaSeleccionada) {
       state.detalleLista = await api('GET', `/listas/${state.listaSeleccionada}`);
+    }
+    if (state.tab === 'analitica') {
+      const qs = state.analiticaAlcance === 'sesion' && state.sesionId ? `?sesion=${encodeURIComponent(state.sesionId)}` : '';
+      state.analitica = await api('GET', '/analitica' + qs);
     }
     render();
     sincronizarYoutube();
@@ -189,6 +265,17 @@
     });
   }
 
+  const ICONOS_TAB = {
+    resumen: '<svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>',
+    reproduccion: '<svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polygon points="10 8 16 12 10 16 10 8"/></svg>',
+    sesiones: '<svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14v7M14 20h7"/></svg>',
+    horarios: '<svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/></svg>',
+    listas: '<svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>',
+    bloqueos: '<svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="5.6" y1="5.6" x2="18.4" y2="18.4"/></svg>',
+    analitica: '<svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="20" x2="20" y2="20"/><rect x="6" y="12" width="3" height="6" rx="1"/><rect x="11" y="7" width="3" height="11" rx="1"/><rect x="16" y="10" width="3" height="8" rx="1"/></svg>',
+    mantenimiento: '<svg class="nav-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.6.79 1 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
+  };
+
   function tabsDisponibles() {
     const esAdmin = state.usuario.rol === 'admin';
     const todos = [
@@ -198,6 +285,7 @@
       { id: 'horarios', label: 'Horarios y Pausa', admin: true },
       { id: 'listas', label: 'Listas por defecto' },
       { id: 'bloqueos', label: 'Bloqueos' },
+      { id: 'analitica', label: 'Analítica', admin: true },
       { id: 'mantenimiento', label: 'Mantenimiento', admin: true },
     ];
     return todos.filter((t) => !t.admin || esAdmin);
@@ -230,7 +318,7 @@
             </select>
           </div>
           <nav class="nav">
-            ${tabsDisponibles().map((t) => `<button data-tab="${t.id}" class="${state.tab === t.id ? 'active' : ''}">${esc(t.label)}</button>`).join('')}
+            ${tabsDisponibles().map((t) => `<button data-tab="${t.id}" class="${state.tab === t.id ? 'active' : ''}">${ICONOS_TAB[t.id] || ''}<span>${esc(t.label)}</span></button>`).join('')}
           </nav>
           <div style="margin-top:auto">
             <button id="btn-refrescar" class="btn sm" style="width:100%;margin-bottom:8px">Actualizar datos</button>
@@ -278,6 +366,7 @@
     else if (state.tab === 'horarios') renderHorarios(cont, p);
     else if (state.tab === 'listas') renderListas(cont, p);
     else if (state.tab === 'bloqueos') renderBloqueos(cont);
+    else if (state.tab === 'analitica') renderAnalitica(cont);
     else if (state.tab === 'mantenimiento') renderMantenimiento(cont, sesionActual);
   }
 
@@ -350,12 +439,13 @@
               <button class="btn sm danger" data-bloq-yt="${esc(actual.cancion.youtube_video_id)}" data-bloq-tit="${esc(actual.cancion.titulo)}" data-bloq-actual="1">Bloquear</button>
             </div>` : '<p class="muted mt">Sin canción sonando. Pulsa Iniciar para reproducir la cola o la lista predeterminada.</p>'}
           <div class="row mt">
-            <button class="btn primary" id="rep-iniciar">Iniciar</button>
-            <button class="btn" id="rep-pausar">Pausar</button>
-            <button class="btn success" id="rep-reanudar">Reanudar</button>
-            <button class="btn" id="rep-siguiente">Terminó / Siguiente</button>
-            <button class="btn warn" id="rep-saltar">Saltar</button>
-            <button class="btn danger" id="rep-error">Reportar error</button>
+            ${rep.estado_reproduccion === 'reproduciendo'
+              ? '<button class="btn primary" id="rep-toggle" data-acc="pausar" title="Pausar">⏸ Pausar</button>'
+              : (rep.estado_reproduccion === 'pausada'
+                ? '<button class="btn success" id="rep-toggle" data-acc="reanudar" title="Reanudar">▶ Reanudar</button>'
+                : '<button class="btn primary" id="rep-toggle" data-acc="iniciar" title="Iniciar">▶ Iniciar</button>')}
+            <button class="btn warn" id="rep-saltar" title="Saltar a la siguiente" ${actual ? '' : 'disabled'}>⏭ Saltar</button>
+            <button class="btn danger" id="rep-error" title="Reportar fallo de reproducción" ${actual ? '' : 'disabled'}>⚠ Reportar error</button>
           </div>
         </div>
 
@@ -383,20 +473,18 @@
         </div>
       </div>`;
 
-    document.getElementById('rep-iniciar').addEventListener('click', () => accionRep('iniciar'));
-    document.getElementById('rep-pausar').addEventListener('click', () => accionRep('pausar'));
-    document.getElementById('rep-reanudar').addEventListener('click', () => accionRep('reanudar'));
-    document.getElementById('rep-siguiente').addEventListener('click', () => accionRep('siguiente'));
+    const tog = document.getElementById('rep-toggle');
+    if (tog) tog.addEventListener('click', () => accionRep(tog.dataset.acc));
     document.getElementById('rep-saltar').addEventListener('click', () => accionRep('saltar'));
     document.getElementById('rep-error').addEventListener('click', () => accionRep('error', { codigo_error: 'reportado_por_dj', segundos_reproducidos: 0 }));
     cont.querySelectorAll('[data-bloq-yt]').forEach((b) => b.addEventListener('click', async () => {
-      const motivo = window.prompt(`Motivo del bloqueo para "${b.dataset.bloqTit}":`, 'Contenido no permitido');
-      if (motivo === null) return;
+      const datos = await pedirBloqueoModal(b.dataset.bloqTit);
+      if (!datos) return;
       try {
         await api('POST', '/bloqueos', {
           youtube_video_id: b.dataset.bloqYt,
-          motivo: motivo.trim() || 'Bloqueada por operador',
-          duracion_minutos: 120,
+          motivo: datos.motivo,
+          duracion_minutos: datos.duracion_minutos,
         });
         showToast('Canción bloqueada');
         if (b.dataset.bloqActual === '1') {
@@ -492,10 +580,18 @@
       } catch (err) { showToast(err.message, true); }
     });
     cont.querySelectorAll('[data-act]').forEach((b) => b.addEventListener('click', async () => {
-      try { await api('POST', `/sesiones/${encodeURIComponent(b.dataset.act)}/activar`); await cargarPanel(); } catch (e) { showToast(e.message, true); }
+      try {
+        await api('POST', `/sesiones/${encodeURIComponent(b.dataset.act)}/activar`);
+        state.sesionId = b.dataset.act;
+        await cargarPanel();
+      } catch (e) { showToast(e.message, true); }
     }));
     cont.querySelectorAll('[data-des]').forEach((b) => b.addEventListener('click', async () => {
-      try { await api('POST', `/sesiones/${encodeURIComponent(b.dataset.des)}/desactivar`, { limpiar_cola: true }); await cargarPanel(); } catch (e) { showToast(e.message, true); }
+      try {
+        await api('POST', `/sesiones/${encodeURIComponent(b.dataset.des)}/desactivar`, { limpiar_cola: true });
+        if (state.sesionId === b.dataset.des) state.sesionId = null;
+        await cargarPanel();
+      } catch (e) { showToast(e.message, true); }
     }));
     cont.querySelectorAll('[data-qr]').forEach((b) => b.addEventListener('click', async () => {
       try { await api('PATCH', `/sesiones/${encodeURIComponent(b.dataset.qr)}/qr`, { activo: b.dataset.qract === '1' }); await cargarPanel(); } catch (e) { showToast(e.message, true); }
@@ -507,11 +603,14 @@
     cont.innerHTML = `
       <div class="grid-2">
         <div class="card">
-          <h2>Automatización y Pausa manual</h2>
+          <div class="between">
+            <h2>Automatización y Pausa manual</h2>
+            <span class="pill ${p.horario.evaluacion_actual.abierto ? 'ok' : 'err'}"><span class="dot"></span>${esc(p.horario.evaluacion_actual.hora_local)} · ${p.horario.evaluacion_actual.abierto ? 'En horario' : 'Fuera de horario'}</span>
+          </div>
           <div class="row mt">
             <div style="flex:1">
               <label for="cfg-ses">Sesión principal</label>
-              <select id="cfg-ses">${p.sesiones.map((s) => `<option value="${esc(s.id_sesion)}" ${s.id_sesion === p.configuracion.id_sesion_principal ? 'selected' : ''}>${esc(s.id_sesion)}</option>`).join('')}</select>
+              <select id="cfg-ses">${p.sesiones.map((s) => `<option value="${esc(s.id_sesion)}" ${s.id_sesion === p.configuracion.id_sesion_principal ? 'selected' : ''}>${esc(s.id_sesion)} (${esc(s.estado)})</option>`).join('')}</select>
             </div>
             <button id="btn-auto" class="btn ${p.configuracion.modo_automatico ? 'warn' : 'primary'}">
               ${p.configuracion.modo_automatico ? 'Desactivar modo automático' : 'Activar modo automático'}
@@ -566,6 +665,13 @@
         </table>
       </form>`;
 
+    document.getElementById('cfg-ses').addEventListener('change', async (e) => {
+      try {
+        await api('PATCH', '/establecimiento/automatico', { id_sesion_principal: e.target.value });
+        showToast('Sesión principal actualizada');
+        await cargarPanel();
+      } catch (err) { showToast(err.message, true); }
+    });
     document.getElementById('btn-auto').addEventListener('click', async () => {
       try {
         await api('PATCH', '/establecimiento/automatico', {
@@ -773,6 +879,233 @@
     cont.querySelectorAll('[data-unbloq]').forEach((b) => b.addEventListener('click', async () => {
       try { await api('POST', `/bloqueos/${b.dataset.unbloq}/desbloquear`); await cargarPanel(); } catch (e) { showToast(e.message, true); }
     }));
+  }
+
+  function renderAnalitica(cont) {
+    const a = state.analitica;
+    if (!a) { cont.innerHTML = '<div class="card"><p class="muted">Cargando indicadores…</p></div>'; return; }
+    const ind = a.indicadores;
+    const pop = a.popularidad || [];
+    const maxVotos = Math.max(1, ...pop.map((x) => x.total_votos || x.total_solicitudes || 0));
+    const temp = a.participacion_temporal || [];
+    const maxEv = Math.max(1, ...temp.map((x) => x.eventos));
+    const puntosSvg = temp.length > 1
+      ? temp.map((t, i) => {
+        const x = 20 + (i * 440) / (temp.length - 1);
+        const y = 140 - (t.eventos / maxEv) * 110;
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+      }).join(' ')
+      : (temp.length === 1 ? `20,${(140 - (temp[0].eventos / maxEv) * 110).toFixed(1)} 460,${(140 - (temp[0].eventos / maxEv) * 110).toFixed(1)}` : '');
+    const uc = a.pipeline.ultima_corrida || {};
+
+    cont.innerHTML = `
+      <div class="between">
+        <div>
+          <div class="eyebrow">Acceso de administrador</div>
+          <h2 style="font-size:1.35rem;margin:4px 0">Analítica</h2>
+          <p class="muted" style="margin:0">Interpreta participación, popularidad y comportamiento operativo.</p>
+        </div>
+        <div class="row">
+          <select id="an-alcance" style="width:auto">
+            <option value="establecimiento" ${state.analiticaAlcance === 'establecimiento' ? 'selected' : ''}>Todo el establecimiento</option>
+            <option value="sesion" ${state.analiticaAlcance === 'sesion' ? 'selected' : ''}>Sesión actual (${esc(state.sesionId || 'N/A')})</option>
+          </select>
+          <button id="an-ingesta" class="btn primary">Ejecutar pipeline</button>
+        </div>
+      </div>
+
+      <div class="grid-4 mt">
+        <div class="card">
+          <div class="kpi-head"><div class="kpi-icon">♪</div><span class="kpi-dots">···</span></div>
+          <div class="muted">Solicitudes</div>
+          <div class="kpi-num">${ind.total_solicitudes}</div>
+          <div class="muted">${ind.solicitudes_rechazadas} rechazadas</div>
+        </div>
+        <div class="card">
+          <div class="kpi-head"><div class="kpi-icon">✓</div><span class="kpi-dots">···</span></div>
+          <div class="muted">Votos válidos</div>
+          <div class="kpi-num">${ind.votos_validos}</div>
+          <div class="muted">Confirmados por regla E4</div>
+        </div>
+        <div class="card">
+          <div class="kpi-head"><div class="kpi-icon">⚠</div><span class="kpi-dots">···</span></div>
+          <div class="muted">Votos rechazados</div>
+          <div class="kpi-num">${ind.votos_rechazados}</div>
+          <div class="muted">No incrementan popularidad</div>
+        </div>
+        <div class="card">
+          <div class="kpi-head"><div class="kpi-icon">▶</div><span class="kpi-dots">···</span></div>
+          <div class="muted">Reproducciones</div>
+          <div class="kpi-num">${ind.reproducciones_totales}</div>
+          <div class="muted">${ind.reproducciones_exitosas} eventos operativos válidos</div>
+        </div>
+      </div>
+
+      <div class="grid-2 mt">
+        <div class="card">
+          <div class="between">
+            <div>
+              <div class="eyebrow">¿Qué contenido recibió más apoyo?</div>
+              <h2 style="margin:4px 0 0">Popularidad de solicitudes</h2>
+            </div>
+            <span class="pill">Datos derivados</span>
+          </div>
+          ${pop.length ? `
+            <div class="chart-bars-wrap">
+              <div class="chart-bars">
+                ${pop.map((c) => {
+                  const v = c.total_votos || c.total_solicitudes || 0;
+                  const h = Math.max(12, Math.round((v / maxVotos) * 125));
+                  return `
+                    <div class="chart-col" title="${esc(c.titulo)} (${v} votos)">
+                      <span class="chart-val">${v}</span>
+                      <div class="chart-bar" style="height:${h}px"></div>
+                    </div>`;
+                }).join('')}
+              </div>
+            </div>
+            <div class="chart-legend">
+              ${pop.map((c) => `
+                <div class="chart-leg-item">
+                  <span class="chart-leg-name"><span class="chart-leg-dot"></span>${esc(c.titulo)}</span>
+                  <strong>${c.total_votos || c.total_solicitudes || 0}</strong>
+                </div>`).join('')}
+            </div>` : '<p class="muted mt">Aún no hay solicitudes registradas para graficar.</p>'}
+        </div>
+
+        <div class="card">
+          <div class="between">
+            <div>
+              <div class="eyebrow">¿Cuándo hubo mayor participación?</div>
+              <h2 style="margin:4px 0 0">Participación temporal</h2>
+            </div>
+            <span class="pill">Datos derivados</span>
+          </div>
+          ${temp.length ? `
+            <div class="chart-bars-wrap" style="padding-top:8px">
+              <svg class="chart-svg" viewBox="0 0 480 165" preserveAspectRatio="none">
+                <defs>
+                  <linearGradient id="an-grad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stop-color="rgba(139,124,255,0.28)" />
+                    <stop offset="100%" stop-color="rgba(139,124,255,0)" />
+                  </linearGradient>
+                </defs>
+                <polygon fill="url(#an-grad)" points="${puntosSvg} 460,155 20,155" />
+                <polyline fill="none" stroke="var(--accent-strong)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" points="${puntosSvg}" />
+                ${temp.map((t, i) => {
+                  const x = temp.length > 1 ? 20 + (i * 440) / (temp.length - 1) : 240;
+                  const y = 140 - (t.eventos / maxEv) * 110;
+                  return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4" fill="var(--accent-strong)" />`;
+                }).join('')}
+              </svg>
+            </div>
+            <div class="between muted" style="font-size:.76rem;margin-top:8px">
+              ${temp.map((t) => `<span>${esc(t.hora)} <strong>${t.eventos}</strong></span>`).join('')}
+            </div>` : '<p class="muted mt">Sin eventos temporales registrados aún.</p>'}
+        </div>
+      </div>
+
+      <div class="grid-4 mt">
+        <div class="card">
+          <div class="muted">Canción más popular</div>
+          <div class="stat-val" style="font-size:1.05rem">${ind.cancion_mas_popular ? esc(ind.cancion_mas_popular.titulo) : 'Sin datos'}</div>
+          <div class="muted">${ind.cancion_mas_popular ? `${ind.cancion_mas_popular.total_votos} votos · ${ind.cancion_mas_popular.total_solicitudes} sol.` : '—'}</div>
+        </div>
+        <div class="card">
+          <div class="muted">Usuarios únicos participantes</div>
+          <div class="stat-val">${ind.usuarios_unicos}</div>
+          <div class="muted">Dispositivos anonimizados</div>
+        </div>
+        <div class="card">
+          <div class="muted">Tiempo de espera promedio</div>
+          <div class="stat-val">${ind.espera_promedio_segundos != null ? fmtSeg(ind.espera_promedio_segundos) : '—'}</div>
+          <div class="muted">Máximo: ${ind.espera_maxima_segundos != null ? fmtSeg(ind.espera_maxima_segundos) : '—'}</div>
+        </div>
+        <div class="card">
+          <div class="muted">Cumplimiento lista por defecto</div>
+          <div class="stat-val">${ind.cumplimiento_lista.porcentaje}%</div>
+          <div class="muted">${ind.cumplimiento_lista.exitosas_lista}/${ind.cumplimiento_lista.total_lista} de lista · ${ind.cumplimiento_lista.de_solicitud} de solicitud</div>
+        </div>
+      </div>
+
+      <div class="grid-2 mt">
+        <div class="card">
+          <div class="between">
+            <h2>Pipeline de ingesta, limpieza y almacenamiento</h2>
+            <span class="pill ok"><span class="dot"></span>Activo</span>
+          </div>
+          <p class="muted">Última corrida: ${fmtFecha(uc.ejecutado_en)}</p>
+          <div class="grid-3 mt">
+            <div class="song-row"><div><div class="muted">Leídos (JSONL)</div><strong>${uc.leidos ?? 0}</strong></div></div>
+            <div class="song-row"><div><div class="muted">Válidos / Nuevos</div><strong>${uc.validos ?? 0} / ${uc.insertados ?? 0}</strong></div></div>
+            <div class="song-row"><div><div class="muted">Descartados / Dup.</div><strong>${uc.descartados ?? 0} / ${uc.duplicados ?? 0}</strong></div></div>
+          </div>
+          <h3 class="mt">Corridas recientes</h3>
+          <table>
+            <thead><tr><th>Fecha</th><th>Leídos</th><th>Válidos</th><th>Dup.</th><th>Desc.</th></tr></thead>
+            <tbody>
+              ${(a.pipeline.corridas_recientes || []).map((c) => `
+                <tr>
+                  <td>${fmtFecha(c.ejecutado_en)}</td>
+                  <td>${c.leidos}</td>
+                  <td>${c.validos}</td>
+                  <td>${c.duplicados}</td>
+                  <td>${c.descartados}</td>
+                </tr>`).join('') || '<tr><td colspan="5" class="muted">Sin corridas registradas.</td></tr>'}
+            </tbody>
+          </table>
+        </div>
+
+        <div class="card">
+          <div class="between">
+            <h2>Evidencia de anonimización</h2>
+            <span class="pill ${a.anonimizacion.cumple_privacidad ? 'ok' : 'err'}"><span class="dot"></span>${a.anonimizacion.cumple_privacidad ? '0 UUIDs crudos' : 'Alerta'}</span>
+          </div>
+          <p class="muted">Método: <strong>${esc(a.anonimizacion.metodo)}</strong> · Eventos anonimizados: <strong>${a.anonimizacion.total_anonimizados}</strong></p>
+          <table>
+            <thead><tr><th>Dispositivo anonimizado</th><th>Tipo</th><th>Actor</th><th>Fecha</th></tr></thead>
+            <tbody>
+              ${(a.anonimizacion.muestra || []).map((m) => `
+                <tr>
+                  <td><code>${esc(m.dispositivo_hash)}</code></td>
+                  <td>${esc(m.tipo)}</td>
+                  <td>${esc(m.actor)}</td>
+                  <td>${fmtFecha(m.fecha_hora)}</td>
+                </tr>`).join('') || '<tr><td colspan="4" class="muted">Sin eventos con dispositivo en este alcance.</td></tr>'}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card mt">
+        <h2>Historial de canciones reproducidas</h2>
+        <table>
+          <thead><tr><th>Canción</th><th>Fuente</th><th>Votos</th><th>Espera</th><th>Resultado</th><th>Inicio</th></tr></thead>
+          <tbody>
+            ${(a.historial_reproducciones || []).map((h) => `
+              <tr>
+                <td><strong>${esc(h.titulo)}</strong><div class="muted">${esc(h.artista_canal)}</div></td>
+                <td><span class="pill ${h.fuente === 'solicitud' ? 'accent' : ''}">${h.fuente === 'solicitud' ? 'Solicitud' : 'Lista por defecto'}</span></td>
+                <td>${h.total_votos}</td>
+                <td>${h.espera_segundos != null ? fmtSeg(h.espera_segundos) : '—'}</td>
+                <td><span class="pill ${h.resultado === 'exitosa' ? 'ok' : 'err'}">${esc(h.resultado)}</span></td>
+                <td>${fmtFecha(h.inicio_en)}</td>
+              </tr>`).join('') || '<tr><td colspan="6" class="muted">Aún no hay reproducciones registradas.</td></tr>'}
+          </tbody>
+        </table>
+      </div>`;
+
+    document.getElementById('an-alcance').addEventListener('change', async (e) => {
+      state.analiticaAlcance = e.target.value;
+      await cargarPanel();
+    });
+    document.getElementById('an-ingesta').addEventListener('click', async () => {
+      try {
+        const r = await api('POST', '/analitica/ingesta');
+        showToast(`Pipeline ejecutado: ${r.insertados} nuevos, ${r.duplicados} duplicados, ${r.descartados} descartados`);
+        await cargarPanel();
+      } catch (e) { showToast(e.message, true); }
+    });
   }
 
   function renderMantenimiento(cont, s) {
