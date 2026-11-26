@@ -229,12 +229,15 @@ async function obtenerTablero({ pool, idEst, idSesion = null, rutaJsonl = RUTA_E
       params,
     ),
     pool.query(
-      `SELECT to_char(to_timestamp(e.fecha_hora / 1000.0) AT TIME ZONE 'America/Bogota', 'HH24') AS hora,
-              COUNT(*)::int AS eventos
+      `SELECT to_char(to_timestamp(floor((e.fecha_hora / 1000.0) / 1800) * 1800) AT TIME ZONE 'America/Bogota', 'HH24:MI') AS hora,
+              COUNT(*)::int AS eventos,
+              MIN(e.fecha_hora) AS orden_ts
        FROM e5_analitica_evento e
        WHERE (e.id_establecimiento = $1 OR e.id_establecimiento IS NULL) ${filtroSesEv}
-       GROUP BY 1
-       ORDER BY 1 ASC`,
+         AND e.tipo IN ('dispositivo_unido', 'busqueda_realizada', 'solicitud_creada', 'voto_registrado', 'voto_cambiado')
+       GROUP BY floor((e.fecha_hora / 1000.0) / 1800)
+       ORDER BY orden_ts DESC
+       LIMIT 12`,
       params,
     ),
     pool.query(
@@ -290,7 +293,7 @@ async function obtenerTablero({ pool, idEst, idSesion = null, rutaJsonl = RUTA_E
       },
     },
     popularidad: resTop.rows,
-    participacion_temporal: resTemporal.rows.map((r) => ({ hora: `${r.hora}:00`, eventos: r.eventos })),
+    participacion_temporal: resTemporal.rows.slice().reverse().map((r) => ({ hora: r.hora, eventos: r.eventos })),
     historial_reproducciones: resHistorial.rows.map((r) => ({
       id_reproduccion: `REP-${r.id_reproduccion}`,
       id_sesion: r.id_sesion,

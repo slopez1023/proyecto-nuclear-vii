@@ -15,7 +15,7 @@ const idEntero = (valor, nombre) => {
   return n;
 };
 
-function crearRouterE5({ pool, youtube, auth, sesionesAdmin, bloqueos, listas, reproductor, conectividad, ahora }) {
+function crearRouterE5({ pool, youtube, auth, sesionesAdmin, bloqueos, listas, reproductor, bonus, conectividad, ahora }) {
   const router = express.Router();
   const soloAdmin = auth.exigirRol('admin');
   const operador = auth.exigirRol('admin', 'dj');
@@ -236,6 +236,32 @@ function crearRouterE5({ pool, youtube, auth, sesionesAdmin, bloqueos, listas, r
 
   router.post('/analitica/ingesta', soloAdmin, manejar(async (_req, res) => {
     res.json(await analitica.ejecutarPipeline({ pool, ahora }));
+  }));
+
+  // ------------------------------------------------------------ funciones opcionales (bonificación)
+  router.put('/canciones/:youtubeVideoId/genero', operador, manejar(async (req, res) => {
+    res.json(await bonus.etiquetarGenero(req.usuario.id_establecimiento, req.params.youtubeVideoId, req.body, req.usuario));
+  }));
+
+  router.get('/respaldos', operador, manejar(async (req, res) => {
+    res.json(await bonus.listarRespaldos(req.usuario.id_establecimiento));
+  }));
+  router.post('/respaldos', soloAdmin, manejar(async (req, res) => {
+    res.status(201).json(await bonus.generarRespaldo(req.usuario.id_establecimiento, 'manual', req.usuario));
+  }));
+  router.get('/respaldos/:idRespaldo', soloAdmin, manejar(async (req, res) => {
+    const r = await bonus.obtenerRespaldo(req.usuario.id_establecimiento, idEntero(req.params.idRespaldo, 'idRespaldo'));
+    res.set('Content-Disposition', `attachment; filename="respaldo-listas-${r.id_respaldo}.json"`).json(r);
+  }));
+
+  router.get('/sonido', operador, manejar(async (req, res) => {
+    res.json(await bonus.leerSonido(req.usuario.id_establecimiento));
+  }));
+  router.put('/sonido', operador, manejar(async (req, res) => {
+    res.json(await bonus.fijarSonido(req.usuario.id_establecimiento, req.body, req.usuario));
+  }));
+  router.post('/sonido/latido', operador, manejar(async (req, res) => {
+    res.json(await bonus.registrarLatido(req.usuario.id_establecimiento));
   }));
 
   return router;

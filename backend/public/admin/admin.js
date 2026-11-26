@@ -15,7 +15,11 @@
     mantenimiento: null,
     registro: [],
     analitica: null,
-    analiticaAlcance: 'establecimiento',
+    sonido: null,
+    respaldos: null,
+    generos: [],
+    filtros: { genero: '', duracion: '', orden: 'popularidad' },
+    analiticaAlcance: 'sesion',
     catalogoResultados: [],
     ytPlayer: null,
     ytVideoCargado: null,
@@ -127,6 +131,60 @@
     sincronizarYoutube();
   };
 
+  function salidaExterna() {
+    return Boolean(state.sonido && state.sonido.salida === 'equipo_local');
+  }
+
+  /** Aplica volumen/silencio del sistema de sonido al reproductor del panel (o lo silencia si la salida es el equipo del local). */
+  function aplicarVolumenPanel() {
+    const p = state.ytPlayer;
+    if (!p || typeof p.setVolume !== 'function' || !state.sonido) return;
+    try {
+      p.setVolume(state.sonido.volumen);
+      if (state.sonido.silenciado || salidaExterna()) p.mute(); else p.unMute();
+    } catch { /* el reproductor aún no está listo */ }
+  }
+
+  let ytHost = null;
+  function asegurarHostYoutube() {
+    if (!ytHost) {
+      ytHost = document.createElement('div');
+      ytHost.id = 'yt-persist-host';
+      ytHost.className = 'yt-box';
+      ytHost.style.cssText = 'position:fixed;left:-9999px;top:0;width:320px;height:180px;z-index:20;pointer-events:none;opacity:0;';
+      ytHost.innerHTML = '<div id="yt-player-slot"></div>';
+      document.body.appendChild(ytHost);
+      window.addEventListener('resize', posicionarYoutube);
+      window.addEventListener('scroll', posicionarYoutube, true);
+    }
+    return ytHost;
+  }
+
+  function posicionarYoutube() {
+    if (!ytHost) return;
+    const mount = state.usuario && state.tab === 'reproduccion' ? document.getElementById('yt-mount-point') : null;
+    if (!mount) {
+      ytHost.style.left = '-9999px';
+      ytHost.style.top = '0px';
+      ytHost.style.width = '320px';
+      ytHost.style.height = '180px';
+      ytHost.style.opacity = '0';
+      ytHost.style.pointerEvents = 'none';
+      return;
+    }
+    const r = mount.getBoundingClientRect();
+    ytHost.style.left = `${Math.round(r.left)}px`;
+    ytHost.style.top = `${Math.round(r.top)}px`;
+    ytHost.style.width = `${Math.round(r.width)}px`;
+    ytHost.style.height = `${Math.round(r.height)}px`;
+    ytHost.style.opacity = '1';
+    ytHost.style.pointerEvents = 'auto';
+  }
+
+  function estacionarYoutube() {
+    posicionarYoutube();
+  }
+
   function sincronizarYoutube() {
     const cont = document.getElementById('yt-player-slot');
     if (!cont || !window.YT || !window.YT.Player) return;
@@ -148,6 +206,11 @@
       state.ytVideoCargado = null;
       return;
     }
+    if (salidaExterna()) {
+      // El audio sale por el equipo conectado al sistema de sonido del local (/sonido): el panel solo controla.
+      if (state.ytPlayer && typeof state.ytPlayer.pauseVideo === 'function') { try { state.ytPlayer.pauseVideo(); } catch {} }
+      return;
+    }
     if (!state.ytPlayer) {
       state.ytVideoCargado = vid;
       state.ytPlayer = new window.YT.Player('yt-player-slot', {
@@ -155,6 +218,7 @@
         playerVars: { autoplay: rep.estado_reproduccion === 'reproduciendo' ? 1 : 0, rel: 0 },
         events: {
           onReady(ev) {
+            aplicarVolumenPanel();
             const est = state.panel && state.panel.reproduccion && state.panel.reproduccion.estado_reproduccion;
             if (est === 'reproduciendo' && typeof ev.target.playVideo === 'function') {
               try { ev.target.playVideo(); } catch {}
@@ -177,6 +241,7 @@
       state.ytVideoCargado = vid;
       state.ytPlayer.loadVideoById(vid);
     }
+    aplicarVolumenPanel();
     if (rep.estado_reproduccion === 'pausada' && typeof state.ytPlayer.pauseVideo === 'function') {
       state.ytPlayer.pauseVideo();
     } else if (rep.estado_reproduccion === 'reproduciendo' && typeof state.ytPlayer.playVideo === 'function') {
@@ -187,30 +252,53 @@
   async function cargarPanel() {
     const q = state.sesionId ? `?sesion=${encodeURIComponent(state.sesionId)}` : '';
     state.panel = await api('GET', '/panel' + q);
-    const actualEnLista = state.panel.sesiones.find((s) => s.id_sesion === state.sesionId);
-    const primeraActiva = state.panel.sesiones.find((s) => s.estado === 'activa');
-    if ((!actualEnLista || (actualEnLista.estado !== 'activa' && primeraActiva)) && primeraActiva) {
-      state.sesionId = primeraActiva.id_sesion;
+    state.sonido = await api('GET', '/sonido').catch(() => state.sonido);
+    const activas = state.panel.sesiones.filter((s) => s.estado === 'activa');
+    if (activas.length === 0) {
+      state.sesionId = null;
+    } else if (!activas.some((s) => s.id_sesion === state.sesionId)) {
+      state.sesionId = activas[0].id_sesion;
       state.panel = await api('GET', `/panel?sesion=${encodeURIComponent(state.sesionId)}`);
-    } else if (!state.sesionId && state.panel.reproduccion) {
-      state.sesionId = state.panel.reproduccion.id_sesion;
-    } else if (!state.sesionId && state.panel.sesiones[0]) {
-      state.sesionId = state.panel.sesiones[0].id_sesion;
     }
     if (state.tab === 'bloqueos') state.bloqueos = (await api('GET', '/bloqueos')).bloqueos;
-    if (state.tab === 'mantenimiento' && state.sesionId) {
-      if (state.usuario.rol === 'admin') state.mantenimiento = await api('GET', `/sesiones/${state.sesionId}/mantenimiento`);
+    if (state.tab === 'mantenimiento') {
+      state.mantenimiento = (state.usuario.rol === 'admin' && state.sesionId)
+        ? await api('GET', `/sesiones/${state.sesionId}/mantenimiento`)
+        : null;
       state.registro = (await api('GET', '/registro')).registros;
     }
-    if (state.tab === 'listas' && state.listaSeleccionada) {
-      state.detalleLista = await api('GET', `/listas/${state.listaSeleccionada}`);
+    if (state.tab === 'listas') {
+      if (state.listaSeleccionada) state.detalleLista = await api('GET', `/listas/${state.listaSeleccionada}`);
+      try {
+        const rg = await fetch('/api/catalogo/generos');
+        if (rg.ok) state.generos = (await rg.json()).generos || [];
+      } catch { /* el filtro de género queda sin opciones */ }
     }
     if (state.tab === 'analitica') {
-      const qs = state.analiticaAlcance === 'sesion' && state.sesionId ? `?sesion=${encodeURIComponent(state.sesionId)}` : '';
+      state.respaldos = await api('GET', '/respaldos').catch(() => state.respaldos);
+    }
+    if (state.tab === 'analitica') {
+      const sesionFiltro = state.analiticaAlcance === 'sesion' && state.sesionId ? state.sesionId : null;
+      const qs = sesionFiltro ? `?sesion=${encodeURIComponent(sesionFiltro)}` : '';
       state.analitica = await api('GET', '/analitica' + qs);
     }
     render();
     sincronizarYoutube();
+    gestionarAutoRefrescoAnalitica();
+  }
+
+  let analiticaTimer = null;
+  function gestionarAutoRefrescoAnalitica() {
+    if (state.usuario && state.tab === 'analitica') {
+      if (!analiticaTimer) {
+        analiticaTimer = setInterval(() => {
+          if (state.usuario && state.tab === 'analitica') cargarPanel().catch(() => {});
+        }, 5000);
+      }
+    } else if (analiticaTimer) {
+      clearInterval(analiticaTimer);
+      analiticaTimer = null;
+    }
   }
 
   async function accionRep(accion, body = {}) {
@@ -292,14 +380,16 @@
   }
 
   function render() {
+    estacionarYoutube();
     if (!state.usuario) return renderLogin();
     const p = state.panel;
     if (!p) { root.innerHTML = '<main class="main"><p>Cargando panel…</p></main>'; return; }
 
     const esAdmin = state.usuario.rol === 'admin';
-    const sesionActual = p.sesiones.find((s) => s.id_sesion === state.sesionId) || p.sesiones[0];
-    const rep = p.reproduccion;
-    const estadoSesion = sesionActual ? sesionActual.estado.toUpperCase() : 'SIN SESIÓN';
+    const sesionesActivas = p.sesiones.filter((s) => s.estado === 'activa');
+    const sesionActual = sesionesActivas.find((s) => s.id_sesion === state.sesionId) || sesionesActivas[0] || null;
+    const rep = sesionActual ? p.reproduccion : null;
+    const estadoSesion = sesionActual ? sesionActual.estado.toUpperCase() : 'SIN SESIÓN ACTIVA';
 
     root.innerHTML = `
       <div class="shell">
@@ -313,9 +403,13 @@
           </div>
           <div>
             <label for="sel-sesion">Sesión activa</label>
-            <select id="sel-sesion">
-              ${p.sesiones.map((s) => `<option value="${esc(s.id_sesion)}" ${s.id_sesion === state.sesionId ? 'selected' : ''}>${esc(s.id_sesion)} (${esc(s.estado)})</option>`).join('')}
-            </select>
+            ${sesionesActivas.length ? `
+              <select id="sel-sesion">
+                ${sesionesActivas.map((s) => `<option value="${esc(s.id_sesion)}" ${s.id_sesion === sesionActual.id_sesion ? 'selected' : ''}>${esc(s.id_sesion)}</option>`).join('')}
+              </select>` : `
+              <select id="sel-sesion" disabled>
+                <option value="">Sin sesión activa</option>
+              </select>`}
           </div>
           <nav class="nav">
             ${tabsDisponibles().map((t) => `<button data-tab="${t.id}" class="${state.tab === t.id ? 'active' : ''}">${ICONOS_TAB[t.id] || ''}<span>${esc(t.label)}</span></button>`).join('')}
@@ -333,8 +427,8 @@
               <h1>${esc(tabsDisponibles().find((t) => t.id === state.tab)?.label || 'Panel')}</h1>
             </div>
             <div class="row">
-              <span class="pill ${sesionActual && sesionActual.estado === 'activa' ? 'ok' : 'err'}"><span class="dot"></span>Sesión ${esc(sesionActual ? sesionActual.estado : 'n/a')}</span>
-              <span class="pill ${sesionActual && sesionActual.qr_estado === 'activo' ? 'ok' : 'warn'}"><span class="dot"></span>QR ${esc(sesionActual ? sesionActual.qr_estado : 'n/a')}</span>
+              <span class="pill ${sesionActual ? 'ok' : 'err'}"><span class="dot"></span>${sesionActual ? 'Sesión activa' : 'Sesión: ninguna'}</span>
+              <span class="pill ${sesionActual && sesionActual.qr_estado === 'activo' ? 'ok' : 'warn'}"><span class="dot"></span>QR ${esc(sesionActual ? sesionActual.qr_estado : 'inactivo')}</span>
               ${p.configuracion.pausa_manual ? '<span class="pill warn"><span class="dot"></span>Pausa manual</span>' : ''}
               <span class="pill accent">Dispositivos activos: ${p.dispositivos_activos}</span>
             </div>
@@ -344,6 +438,7 @@
       </div>`;
 
     document.getElementById('sel-sesion').addEventListener('change', async (e) => {
+      if (!e.target.value) return;
       state.sesionId = e.target.value;
       await cargarPanel();
     });
@@ -354,6 +449,9 @@
     document.getElementById('btn-refrescar').addEventListener('click', () => cargarPanel());
     document.getElementById('btn-salir').addEventListener('click', async () => {
       await api('POST', '/auth/logout');
+      if (state.ytPlayer && typeof state.ytPlayer.destroy === 'function') { try { state.ytPlayer.destroy(); } catch {} }
+      state.ytPlayer = null;
+      state.ytVideoCargado = null;
       state.usuario = null;
       state.panel = null;
       render();
@@ -420,7 +518,7 @@
   }
 
   function renderReproduccion(cont, p, rep) {
-    if (!rep) { cont.innerHTML = '<div class="card"><p>Selecciona una sesión.</p></div>'; return; }
+    if (!rep) { cont.innerHTML = '<div class="card"><p class="muted">No hay ninguna sesión activa. Crea y activa una sesión en <strong>Sesiones y QR</strong> para iniciar la reproducción.</p></div>'; return; }
     const actual = rep.actual;
     cont.innerHTML = `
       <div class="grid-2">
@@ -429,7 +527,7 @@
             <h2>Reproductor YouTube</h2>
             <span class="pill ${rep.estado_reproduccion === 'reproduciendo' ? 'ok' : 'warn'}"><span class="dot"></span>${esc(rep.estado_reproduccion)}</span>
           </div>
-          <div class="yt-box mt"><div id="yt-player-slot"></div></div>
+          <div id="yt-mount-point" class="yt-box mt" style="border-color:transparent;background:transparent"></div>
           ${actual ? `
             <div class="between mt">
               <div>
@@ -447,6 +545,27 @@
             <button class="btn warn" id="rep-saltar" title="Saltar a la siguiente" ${actual ? '' : 'disabled'}>⏭ Saltar</button>
             <button class="btn danger" id="rep-error" title="Reportar fallo de reproducción" ${actual ? '' : 'disabled'}>⚠ Reportar error</button>
           </div>
+          ${state.sonido ? `
+            <div class="mt" style="padding-top:14px;border-top:1px solid var(--line)">
+              <div class="between">
+                <h3 style="margin:0">Sistema de sonido del local</h3>
+                <span class="pill ${state.sonido.salida === 'equipo_local' ? (state.sonido.salida_conectada ? 'ok' : 'err') : 'accent'}"><span class="dot"></span>${
+                  state.sonido.salida === 'equipo_local' ? (state.sonido.salida_conectada ? 'Equipo del local conectado' : 'Equipo del local sin conexión') : 'Suena en este panel'}</span>
+              </div>
+              <div class="row mt">
+                <button class="btn sm" id="snd-mute" title="Silenciar o activar el sonido">${state.sonido.silenciado ? '🔇 Activar sonido' : '🔊 Silenciar'}</button>
+                <input id="snd-vol" type="range" min="0" max="100" value="${state.sonido.volumen}" style="flex:1;min-width:120px;padding:0">
+                <span class="pill" id="snd-vol-txt">${state.sonido.volumen}%</span>
+              </div>
+              <div class="row mt">
+                <select id="snd-salida" style="flex:1;min-width:180px">
+                  <option value="panel" ${state.sonido.salida === 'panel' ? 'selected' : ''}>Salida: este panel</option>
+                  <option value="equipo_local" ${state.sonido.salida === 'equipo_local' ? 'selected' : ''}>Salida: equipo del local (/sonido)</option>
+                </select>
+                <a class="btn sm" href="/sonido" target="_blank" rel="noopener">Abrir salida del local</a>
+              </div>
+              <p class="muted" style="margin:8px 0 0">Abre <code>/sonido</code> en el equipo conectado al amplificador. El volumen, el silencio y la reproducción se controlan desde aquí.</p>
+            </div>` : ''}
         </div>
 
         <div class="card">
@@ -477,6 +596,28 @@
     if (tog) tog.addEventListener('click', () => accionRep(tog.dataset.acc));
     document.getElementById('rep-saltar').addEventListener('click', () => accionRep('saltar'));
     document.getElementById('rep-error').addEventListener('click', () => accionRep('error', { codigo_error: 'reportado_por_dj', segundos_reproducidos: 0 }));
+    const sndMute = document.getElementById('snd-mute');
+    if (sndMute) {
+      const guardarSonido = async (cambios) => {
+        try {
+          state.sonido = await api('PUT', '/sonido', cambios);
+          aplicarVolumenPanel();
+          if ('salida' in cambios) await cargarPanel();
+        } catch (e) { showToast(e.message, true); }
+      };
+      sndMute.addEventListener('click', async () => {
+        await guardarSonido({ silenciado: !state.sonido.silenciado });
+        sndMute.textContent = state.sonido && state.sonido.silenciado ? '🔇 Activar sonido' : '🔊 Silenciar';
+      });
+      const vol = document.getElementById('snd-vol');
+      vol.addEventListener('input', () => {
+        document.getElementById('snd-vol-txt').textContent = `${vol.value}%`;
+        if (state.sonido) state.sonido.volumen = Number(vol.value);
+        aplicarVolumenPanel();
+      });
+      vol.addEventListener('change', () => guardarSonido({ volumen: Number(vol.value) }));
+      document.getElementById('snd-salida').addEventListener('change', (e) => guardarSonido({ salida: e.target.value }));
+    }
     cont.querySelectorAll('[data-bloq-yt]').forEach((b) => b.addEventListener('click', async () => {
       const datos = await pedirBloqueoModal(b.dataset.bloqTit);
       if (!datos) return;
@@ -494,6 +635,8 @@
         }
       } catch (e) { showToast(e.message, true); }
     }));
+    asegurarHostYoutube();
+    requestAnimationFrame(posicionarYoutube);
     sincronizarYoutube();
   }
 
@@ -537,7 +680,18 @@
   function renderSesiones(cont, p) {
     const vigentes = p.sesiones.filter((s) => s.estado === 'activa' || !s.desactivado_permanente);
     const cerradas = p.sesiones.filter((s) => s.estado !== 'activa' && s.desactivado_permanente);
+    const bloqueadoPorHorario = p.configuracion.modo_automatico && !p.horario.evaluacion_actual.abierto;
     cont.innerHTML = `
+      ${bloqueadoPorHorario ? `
+        <div class="card" style="border-color:var(--warning);margin-bottom:16px">
+          <div class="between">
+            <div>
+              <div class="eyebrow" style="color:var(--warning)">Modo automático activo · Fuera de horario (${esc(p.horario.evaluacion_actual.hora_local)})</div>
+              <p class="muted" style="margin:6px 0 0">El planificador cierra automáticamente las sesiones cada 15 s fuera del horario configurado. Ajusta el horario o desactiva el modo automático si deseas operar manualmente.</p>
+            </div>
+            <button id="btn-desactivar-auto-rapido" class="btn warn sm">Desactivar modo automático</button>
+          </div>
+        </div>` : ''}
       <div class="card">
         <h2>Crear nueva sesión musical</h2>
         <form id="f-nueva-sesion" class="row">
@@ -560,6 +714,15 @@
             ${cerradas.map(tarjetaSesionHtml).join('')}
           </div>
         </details>` : ''}`;
+
+    const btnAutoRapido = document.getElementById('btn-desactivar-auto-rapido');
+    if (btnAutoRapido) btnAutoRapido.addEventListener('click', async () => {
+      try {
+        await api('PATCH', '/establecimiento/automatico', { modo_automatico: false });
+        showToast('Modo automático desactivado');
+        await cargarPanel();
+      } catch (err) { showToast(err.message, true); }
+    });
 
     document.getElementById('f-nueva-sesion').addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -600,6 +763,7 @@
 
   function renderHorarios(cont, p) {
     const mapH = new Map(p.horario.horarios.map((h) => [h.dia_semana, h]));
+    const sesionesDisponibles = p.sesiones.filter((s) => s.estado === 'activa' || !s.desactivado_permanente);
     cont.innerHTML = `
       <div class="grid-2">
         <div class="card">
@@ -610,7 +774,9 @@
           <div class="row mt">
             <div style="flex:1">
               <label for="cfg-ses">Sesión principal</label>
-              <select id="cfg-ses">${p.sesiones.map((s) => `<option value="${esc(s.id_sesion)}" ${s.id_sesion === p.configuracion.id_sesion_principal ? 'selected' : ''}>${esc(s.id_sesion)} (${esc(s.estado)})</option>`).join('')}</select>
+              ${sesionesDisponibles.length ? `
+                <select id="cfg-ses">${sesionesDisponibles.map((s) => `<option value="${esc(s.id_sesion)}" ${s.id_sesion === p.configuracion.id_sesion_principal ? 'selected' : ''}>${esc(s.id_sesion)} (${esc(s.estado)})</option>`).join('')}</select>` : `
+                <select id="cfg-ses" disabled><option value="">Sin sesión activa</option></select>`}
             </div>
             <button id="btn-auto" class="btn ${p.configuracion.modo_automatico ? 'warn' : 'primary'}">
               ${p.configuracion.modo_automatico ? 'Desactivar modo automático' : 'Activar modo automático'}
@@ -666,6 +832,7 @@
       </form>`;
 
     document.getElementById('cfg-ses').addEventListener('change', async (e) => {
+      if (!e.target.value) return;
       try {
         await api('PATCH', '/establecimiento/automatico', { id_sesion_principal: e.target.value });
         showToast('Sesión principal actualizada');
@@ -673,11 +840,15 @@
       } catch (err) { showToast(err.message, true); }
     });
     document.getElementById('btn-auto').addEventListener('click', async () => {
+      const idSel = document.getElementById('cfg-ses').value || null;
+      if (!p.configuracion.modo_automatico && !idSel) {
+        showToast('Crea y activa una sesión primero', true);
+        return;
+      }
       try {
-        await api('PATCH', '/establecimiento/automatico', {
-          modo_automatico: !p.configuracion.modo_automatico,
-          id_sesion_principal: document.getElementById('cfg-ses').value,
-        });
+        const body = { modo_automatico: !p.configuracion.modo_automatico };
+        if (idSel) body.id_sesion_principal = idSel;
+        await api('PATCH', '/establecimiento/automatico', body);
         await cargarPanel();
       } catch (e) { showToast(e.message, true); }
     });
@@ -756,6 +927,24 @@
               <input id="yt-q" placeholder="Buscar canción o artista en YouTube..." value="${esc(state.busquedaYt || '')}" minlength="2" required style="flex:1">
               <button class="btn primary" type="submit">Buscar</button>
             </form>
+            <div class="row mt">
+              <select id="fl-genero" style="flex:1;min-width:130px">
+                <option value="">Todos los géneros</option>
+                ${state.generos.map((g) => `<option value="${esc(g.genero)}" ${state.filtros.genero === g.genero ? 'selected' : ''}>${esc(g.genero)} (${g.total})</option>`).join('')}
+              </select>
+              <select id="fl-duracion" style="flex:1;min-width:130px">
+                <option value="" ${state.filtros.duracion === '' ? 'selected' : ''}>Cualquier duración</option>
+                <option value="corta" ${state.filtros.duracion === 'corta' ? 'selected' : ''}>Corta (hasta 3 min)</option>
+                <option value="media" ${state.filtros.duracion === 'media' ? 'selected' : ''}>Media (3 a 5 min)</option>
+                <option value="larga" ${state.filtros.duracion === 'larga' ? 'selected' : ''}>Larga (más de 5 min)</option>
+              </select>
+              <select id="fl-orden" style="flex:1;min-width:130px">
+                <option value="popularidad" ${state.filtros.orden === 'popularidad' ? 'selected' : ''}>Más populares</option>
+                <option value="duracion_asc" ${state.filtros.orden === 'duracion_asc' ? 'selected' : ''}>Más cortas primero</option>
+                <option value="titulo" ${state.filtros.orden === 'titulo' ? 'selected' : ''}>Título A–Z</option>
+              </select>
+              <button id="fl-aplicar" type="button" class="btn">Filtrar catálogo</button>
+            </div>
             ${state.catalogoResultados.length ? `
               <div class="mt" style="max-height:260px;overflow:auto;display:flex;flex-direction:column;gap:8px">
                 ${state.catalogoResultados.map((c) => `
@@ -763,7 +952,7 @@
                     <img class="song-thumb" src="${esc(c.url_miniatura || '')}" alt="">
                     <div style="flex:1;min-width:0">
                       <div class="song-title">${esc(c.titulo)}</div>
-                      <div class="song-meta">${esc(c.artista_canal)} · ${fmtSeg(c.duracion_segundos)}</div>
+                      <div class="song-meta">${esc(c.artista_canal)} · ${fmtSeg(c.duracion_segundos)}${c.genero ? ` · ${esc(c.genero)}` : ''}${c.total_votos ? ` · ${c.total_votos} votos` : ''}</div>
                     </div>
                     <button class="btn sm success" data-addyt="${esc(c.youtube_video_id)}">+ Agregar</button>
                   </div>`).join('')}
@@ -802,6 +991,30 @@
     cont.querySelectorAll('[data-defl]').forEach((b) => b.addEventListener('click', async () => {
       try { await api('PUT', '/listas/configuracion/predeterminada', { id_lista_defecto: Number(b.dataset.defl) }); await cargarPanel(); } catch (e) { showToast(e.message, true); }
     }));
+    const flAplicar = document.getElementById('fl-aplicar');
+    if (flAplicar) flAplicar.addEventListener('click', async () => {
+      state.filtros = {
+        genero: document.getElementById('fl-genero').value,
+        duracion: document.getElementById('fl-duracion').value,
+        orden: document.getElementById('fl-orden').value,
+      };
+      const qs = new URLSearchParams({ orden: state.filtros.orden, limite: '30' });
+      const texto = document.getElementById('yt-q').value.trim();
+      if (texto) qs.set('q', texto);
+      if (state.filtros.genero) qs.set('genero', state.filtros.genero);
+      if (state.filtros.duracion === 'corta') qs.set('duracion_max', '180');
+      if (state.filtros.duracion === 'media') { qs.set('duracion_min', '180'); qs.set('duracion_max', '300'); }
+      if (state.filtros.duracion === 'larga') qs.set('duracion_min', '300');
+      if (state.sesionId) qs.set('sesion', state.sesionId);
+      try {
+        const res = await fetch('/api/catalogo/explorar?' + qs.toString());
+        const data = await res.json();
+        if (!res.ok) throw new Error((data.error && data.error.mensaje) || `Error ${res.status}`);
+        state.catalogoResultados = data.resultados || [];
+        if (!state.catalogoResultados.length) showToast('Ninguna canción del catálogo cumple esos filtros', true);
+        render();
+      } catch (err) { showToast(err.message, true); }
+    });
     const fbyt = document.getElementById('f-buscar-yt');
     if (fbyt) fbyt.addEventListener('submit', async (e) => {
       e.preventDefault();
@@ -891,11 +1104,11 @@
     const maxEv = Math.max(1, ...temp.map((x) => x.eventos));
     const puntosSvg = temp.length > 1
       ? temp.map((t, i) => {
-        const x = 20 + (i * 440) / (temp.length - 1);
-        const y = 140 - (t.eventos / maxEv) * 110;
+        const x = 44 + (i * 416) / (temp.length - 1);
+        const y = 142 - (t.eventos / maxEv) * 114;
         return `${x.toFixed(1)},${y.toFixed(1)}`;
       }).join(' ')
-      : (temp.length === 1 ? `20,${(140 - (temp[0].eventos / maxEv) * 110).toFixed(1)} 460,${(140 - (temp[0].eventos / maxEv) * 110).toFixed(1)}` : '');
+      : (temp.length === 1 ? `44,${(142 - (temp[0].eventos / maxEv) * 114).toFixed(1)} 460,${(142 - (temp[0].eventos / maxEv) * 114).toFixed(1)}` : '');
     const uc = a.pipeline.ultima_corrida || {};
 
     cont.innerHTML = `
@@ -947,19 +1160,26 @@
             <div>
               <div class="eyebrow">¿Qué contenido recibió más apoyo?</div>
               <h2 style="margin:4px 0 0">Popularidad de solicitudes</h2>
+              <div class="muted" style="font-size:.76rem">Eje Y: votos recibidos · Eje X: canciones Top 5</div>
             </div>
-            <span class="pill">Datos derivados</span>
+            <span class="pill">Votos por canción</span>
           </div>
           ${pop.length ? `
-            <div class="chart-bars-wrap">
-              <div class="chart-bars">
+            <div class="chart-bars-wrap chart-with-y">
+              <div class="chart-y-axis" title="Votos">
+                <span>${maxVotos}</span>
+                <span>${Math.round(maxVotos / 2)}</span>
+                <span>0</span>
+              </div>
+              <div class="chart-bars" style="flex:1">
                 ${pop.map((c) => {
                   const v = c.total_votos || c.total_solicitudes || 0;
                   const h = Math.max(12, Math.round((v / maxVotos) * 125));
                   return `
-                    <div class="chart-col" title="${esc(c.titulo)} (${v} votos)">
+                    <div class="chart-col" title="${esc(c.titulo)}: ${v} votos (${c.total_solicitudes} solicitudes)">
                       <span class="chart-val">${v}</span>
                       <div class="chart-bar" style="height:${h}px"></div>
+                      <span class="chart-lbl">${esc(c.titulo)}</span>
                     </div>`;
                 }).join('')}
               </div>
@@ -968,7 +1188,7 @@
               ${pop.map((c) => `
                 <div class="chart-leg-item">
                   <span class="chart-leg-name"><span class="chart-leg-dot"></span>${esc(c.titulo)}</span>
-                  <strong>${c.total_votos || c.total_solicitudes || 0}</strong>
+                  <strong>${c.total_votos || c.total_solicitudes || 0} votos</strong>
                 </div>`).join('')}
             </div>` : '<p class="muted mt">Aún no hay solicitudes registradas para graficar.</p>'}
         </div>
@@ -977,31 +1197,37 @@
           <div class="between">
             <div>
               <div class="eyebrow">¿Cuándo hubo mayor participación?</div>
-              <h2 style="margin:4px 0 0">Participación temporal</h2>
+              <h2 style="margin:4px 0 0">Participación temporal (cada 30 min)</h2>
+              <div class="muted" style="font-size:.76rem">Eje Y: acciones de clientes (ingresos, búsquedas, pedidos y votos) · Eje X: hora</div>
             </div>
-            <span class="pill">Datos derivados</span>
+            <span class="pill">Cada 30 min</span>
           </div>
           ${temp.length ? `
             <div class="chart-bars-wrap" style="padding-top:8px">
-              <svg class="chart-svg" viewBox="0 0 480 165" preserveAspectRatio="none">
+              <svg class="chart-svg" viewBox="0 0 480 175" preserveAspectRatio="none">
                 <defs>
                   <linearGradient id="an-grad" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stop-color="rgba(139,124,255,0.28)" />
                     <stop offset="100%" stop-color="rgba(139,124,255,0)" />
                   </linearGradient>
                 </defs>
-                <polygon fill="url(#an-grad)" points="${puntosSvg} 460,155 20,155" />
+                <line x1="36" y1="18" x2="36" y2="145" stroke="var(--line-strong)" stroke-width="1.2" />
+                <line x1="36" y1="145" x2="466" y2="145" stroke="var(--line-strong)" stroke-width="1.2" />
+                <text x="30" y="28" text-anchor="end" fill="var(--muted)" font-size="11">${maxEv}</text>
+                <text x="30" y="88" text-anchor="end" fill="var(--muted)" font-size="11">${Math.round(maxEv / 2)}</text>
+                <text x="30" y="145" text-anchor="end" fill="var(--muted)" font-size="11">0</text>
+                <polygon fill="url(#an-grad)" points="${puntosSvg} 460,145 44,145" />
                 <polyline fill="none" stroke="var(--accent-strong)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" points="${puntosSvg}" />
                 ${temp.map((t, i) => {
-                  const x = temp.length > 1 ? 20 + (i * 440) / (temp.length - 1) : 240;
-                  const y = 140 - (t.eventos / maxEv) * 110;
-                  return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4" fill="var(--accent-strong)" />`;
+                  const x = temp.length > 1 ? 44 + (i * 416) / (temp.length - 1) : 252;
+                  const y = 142 - (t.eventos / maxEv) * 114;
+                  return `
+                    <circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4.5" fill="var(--accent-strong)" />
+                    <text x="${x.toFixed(1)}" y="${Math.max(14, y - 9).toFixed(1)}" text-anchor="middle" fill="var(--text)" font-size="11" font-weight="700">${t.eventos}</text>
+                    <text x="${x.toFixed(1)}" y="164" text-anchor="middle" fill="var(--muted)" font-size="10">${esc(t.hora)}</text>`;
                 }).join('')}
               </svg>
-            </div>
-            <div class="between muted" style="font-size:.76rem;margin-top:8px">
-              ${temp.map((t) => `<span>${esc(t.hora)} <strong>${t.eventos}</strong></span>`).join('')}
-            </div>` : '<p class="muted mt">Sin eventos temporales registrados aún.</p>'}
+            </div>` : '<p class="muted mt">Aún no hay participación de clientes registrada en este periodo.</p>'}
         </div>
       </div>
 
@@ -1078,6 +1304,30 @@
       </div>
 
       <div class="card mt">
+        <div class="between">
+          <div>
+            <div class="eyebrow">Bonificación · Respaldo para análisis posterior</div>
+            <h2 style="margin:4px 0 0">Respaldo automático de las listas más populares</h2>
+          </div>
+          <button id="rs-generar" class="btn primary">Generar respaldo ahora</button>
+        </div>
+        <p class="muted">Cada ${state.respaldos ? state.respaldos.intervalo_horas : 24} h el sistema guarda el Top 20 de canciones por votos, los votos por género y las listas predeterminadas (JSON en <code>backend/data/respaldos</code> y en base de datos).</p>
+        <table>
+          <thead><tr><th>Fecha</th><th>Origen</th><th>Canciones</th><th>Archivo</th><th></th></tr></thead>
+          <tbody>
+            ${((state.respaldos && state.respaldos.respaldos) || []).map((r) => `
+              <tr>
+                <td>${fmtFecha(r.generado_en)}</td>
+                <td><span class="pill ${r.origen === 'automatico' ? 'ok' : 'accent'}">${r.origen === 'automatico' ? 'Automático' : 'Manual'}</span></td>
+                <td>${r.total_canciones}</td>
+                <td class="muted">${esc(r.archivo || 'solo base de datos')}</td>
+                <td><a class="btn sm" href="/api/admin/respaldos/${r.id_respaldo}" download>Descargar</a></td>
+              </tr>`).join('') || '<tr><td colspan="5" class="muted">Aún no hay respaldos. Se generará el primero automáticamente.</td></tr>'}
+          </tbody>
+        </table>
+      </div>
+
+      <div class="card mt">
         <h2>Historial de canciones reproducidas</h2>
         <table>
           <thead><tr><th>Canción</th><th>Fuente</th><th>Votos</th><th>Espera</th><th>Resultado</th><th>Inicio</th></tr></thead>
@@ -1099,6 +1349,13 @@
       state.analiticaAlcance = e.target.value;
       await cargarPanel();
     });
+    document.getElementById('rs-generar').addEventListener('click', async () => {
+      try {
+        const r = await api('POST', '/respaldos');
+        showToast(`Respaldo generado (${r.total_canciones} canciones)`);
+        await cargarPanel();
+      } catch (e) { showToast(e.message, true); }
+    });
     document.getElementById('an-ingesta').addEventListener('click', async () => {
       try {
         const r = await api('POST', '/analitica/ingesta');
@@ -1113,11 +1370,11 @@
     cont.innerHTML = `
       <div class="grid-2">
         <div class="card">
-          <h2>Limpieza de cola y preparación (${esc(s ? s.id_sesion : '')})</h2>
+          <h2>Limpieza de cola y preparación (${esc(s ? s.id_sesion : 'Sin sesión activa')})</h2>
           <p class="muted">Retira únicamente las solicitudes pendientes de la sesión actual. Todo el historial de solicitudes y reproducciones se conserva en la base de datos.</p>
           <div class="row mt">
-            <button id="btn-limpiar" class="btn warn">Limpiar cola pendiente</button>
-            <button id="btn-limpiar-todo" class="btn danger">Limpiar cola y reiniciar lista</button>
+            <button id="btn-limpiar" class="btn warn" ${s ? '' : 'disabled'}>Limpiar cola pendiente</button>
+            <button id="btn-limpiar-todo" class="btn danger" ${s ? '' : 'disabled'}>Limpiar cola y reiniciar lista</button>
           </div>
           ${m ? `<pre class="muted mt" style="white-space:pre-wrap">${esc(JSON.stringify(m.resumen_solicitudes, null, 2))}</pre>` : ''}
         </div>
@@ -1131,9 +1388,11 @@
       </div>`;
 
     document.getElementById('btn-limpiar').addEventListener('click', async () => {
+      if (!s) return;
       try { const r = await api('POST', `/sesiones/${encodeURIComponent(s.id_sesion)}/mantenimiento/limpiar-cola`, { reiniciar_lista: false }); showToast(`Retiradas ${r.solicitudes_retiradas} solicitudes (historial conservado)`); await cargarPanel(); } catch (e) { showToast(e.message, true); }
     });
     document.getElementById('btn-limpiar-todo').addEventListener('click', async () => {
+      if (!s) return;
       try { const r = await api('POST', `/sesiones/${encodeURIComponent(s.id_sesion)}/mantenimiento/limpiar-cola`, { reiniciar_lista: true }); showToast(`Cola limpia (${r.solicitudes_retiradas}) y lista reiniciada`); await cargarPanel(); } catch (e) { showToast(e.message, true); }
     });
   }

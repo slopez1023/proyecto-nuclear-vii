@@ -22,11 +22,13 @@ const TIPOS_E5 = new Set([
   'reproduccion_pausada', 'reproduccion_reanudada', 'reproduccion_en_espera',
   'cancion_bloqueada', 'cancion_desbloqueada', 'solicitud_retirada',
   'lista_actualizada', 'mantenimiento_realizado', 'sesion_creada',
+  // funcionalidades opcionales (bonificación)
+  'voto_cambiado', 'respaldo_listas_generado', 'sonido_actualizado',
 ]);
 
 const actorDe = (usuario) => (!usuario ? 'sistema' : usuario.rol === 'admin' ? 'administrador' : 'dj');
 
-function crearEventoE5({ tipo, sesion_id = null, id_establecimiento, usuario = null, datos_evento = {} }, ahora = () => new Date()) {
+function crearEventoE5({ tipo, sesion_id = null, id_establecimiento, usuario = null, dispositivo_id = null, datos_evento = {} }, ahora = () => new Date()) {
   if (!TIPOS_E5.has(tipo)) throw new Error(`Tipo de evento del E5 desconocido: ${tipo}`);
   return {
     evento_id: crypto.randomUUID(),
@@ -34,8 +36,8 @@ function crearEventoE5({ tipo, sesion_id = null, id_establecimiento, usuario = n
     fecha_hora: ahora().toISOString(),
     sesion_id,
     id_establecimiento,
-    actor: actorDe(usuario),
-    dispositivo_id: null,
+    actor: dispositivo_id ? 'cliente' : actorDe(usuario),
+    dispositivo_id,
     version_esquema: VERSION_ESQUEMA_E5,
     datos_evento: { ...datos_evento, id_usuario: usuario ? `USR-${usuario.id_usuario}` : null },
   };

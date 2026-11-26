@@ -9,7 +9,7 @@
 const repo5 = require('./repositorio-e5');
 const { evaluarHorario } = require('./horarios');
 
-function crearPlanificador({ pool, sesionesAdmin, reproductor, ahora, intervaloMs = 15_000 }) {
+function crearPlanificador({ pool, sesionesAdmin, reproductor, bonus = null, ahora, intervaloMs = 15_000 }) {
   let ejecutando = false;
   let timer = null;
 
@@ -47,6 +47,7 @@ function crearPlanificador({ pool, sesionesAdmin, reproductor, ahora, intervaloM
         }
       }
       await reproductor.verificarEspera();
+      if (bonus && typeof bonus.cicloRespaldo === 'function') await bonus.cicloRespaldo();
     } catch (err) {
       console.error('[e5/planificador]', err.message);
     } finally {

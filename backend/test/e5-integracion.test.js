@@ -121,3 +121,48 @@ test('continuidad musical, listas, bloqueos y compatibilidad con votaciones', co
   const mv = await e.miVotacion(uuid(1));
   assert.equal(mv.reproducciones_contadas, 0);
 }));
+
+test('bonificación: cambio de voto, filtros del catálogo, respaldo de listas y sistema de sonido', conEntorno(async (e) => {
+  // Cambio de voto: el dispositivo 1 mueve su voto de la canción 1 a la canción 2 (de otro dispositivo)
+  const s1 = (await e.solicitar(uuid(1), cancion(1))).body.solicitud.id_solicitud;
+  const s2 = (await e.solicitar(uuid(2), cancion(2))).body.solicitud.id_solicitud;
+  const cambiar = (origen, destino, disp = uuid(1)) => e.pedir('POST', `/api/sesiones/${SESION}/solicitudes/${origen}/cambiar-voto`,
+    { dispositivo: disp, cuerpo: { nueva_solicitud_id: destino } });
+
+  assert.equal((await cambiar(s1, s1)).status, 400);
+  const r = await cambiar(s1, s2);
+  assert.equal(r.status, 200);
+  assert.equal(r.body.resultado, 'voto_cambiado');
+  assert.equal(r.body.origen.retirada, true);
+  assert.equal(r.body.destino.total_votos, 2);
+  // Ya no tiene voto en la canción de origen
+  assert.equal((await cambiar(s1, s2)).status, 409);
+
+  // Filtros: orden por popularidad (la canción 2 tiene 2 votos) y validación de parámetros
+  const ex = await e.pedir('GET', '/api/catalogo/explorar?orden=popularidad&limite=5');
+  assert.equal(ex.status, 200);
+  assert.equal(ex.body.resultados[0].youtube_video_id, cancion(2));
+  assert.equal(ex.body.resultados[0].total_votos, 2);
+  assert.equal((await e.pedir('GET', '/api/catalogo/generos')).status, 200);
+  assert.equal((await e.pedir('GET', '/api/catalogo/explorar?duracion_min=500&duracion_max=10')).status, 400);
+  assert.equal((await e.pedir('GET', '/api/catalogo/explorar?orden=raro')).status, 400);
+
+  // Respaldo de listas populares: solo el administrador lo genera; ambos roles pueden consultarlo
+  assert.equal((await e.pedirAdmin('POST', '/respaldos', { auth: e.dj, cuerpo: {} })).status, 403);
+  const rs = await e.pedirAdmin('POST', '/respaldos', { cuerpo: {} });
+  assert.equal(rs.status, 201);
+  assert.ok(rs.body.total_canciones >= 1);
+  const lista = await e.pedirAdmin('GET', '/respaldos', { auth: e.dj });
+  assert.equal(lista.body.respaldos.length, 1);
+  const detalle = await e.pedirAdmin('GET', `/respaldos/${rs.body.id_respaldo}`);
+  assert.equal(detalle.body.canciones_mas_populares[0].youtube_video_id, cancion(2));
+
+  // Sistema de sonido: el DJ ajusta volumen y salida; el latido del equipo local marca la salida como conectada
+  const snd = await e.pedirAdmin('PUT', '/sonido', { auth: e.dj, cuerpo: { volumen: 40, silenciado: true, salida: 'equipo_local' } });
+  assert.equal(snd.status, 200);
+  assert.equal(snd.body.volumen, 40);
+  assert.equal(snd.body.salida_conectada, false);
+  assert.equal((await e.pedirAdmin('PUT', '/sonido', { cuerpo: { volumen: 150 } })).status, 400);
+  const latido = await e.pedirAdmin('POST', '/sonido/latido', { auth: e.dj, cuerpo: {} });
+  assert.equal(latido.body.salida_conectada, true);
+}));

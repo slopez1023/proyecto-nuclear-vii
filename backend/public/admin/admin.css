@@ -375,6 +375,22 @@ th { color: var(--muted); font-weight: 700; font-size: .78rem; text-transform: u
   background-image: linear-gradient(to bottom, rgba(255,255,255,.04) 1px, transparent 1px);
   background-size: 100% 42px;
 }
+.chart-with-y {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+.chart-y-axis {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding: 6px 8px 4px 0;
+  border-right: 1px solid var(--line-strong);
+  font-size: .72rem;
+  color: var(--muted);
+  min-width: 28px;
+}
 .chart-legend {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

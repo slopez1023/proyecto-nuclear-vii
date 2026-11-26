@@ -16,7 +16,11 @@ async function crearEntornoE5(opciones = {}) {
     youtube: e.youtube,
     almacenEventos: { guardar: (ev) => e.eventos.push(ev) },
     ahora: e.reloj.ahora,
-    config: { publicBaseUrl: 'https://ponga.test', intervaloPlanificadorMs: 60_000 },
+    config: {
+      publicBaseUrl: 'https://ponga.test',
+      intervaloPlanificadorMs: 60_000,
+      carpetaRespaldos: require('node:path').join(require('node:os').tmpdir(), 'ponga-respaldos-test'),
+    },
   });
 
   await crearOActualizarUsuario(e.pool, {

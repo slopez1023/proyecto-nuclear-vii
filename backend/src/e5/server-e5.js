@@ -101,7 +101,11 @@ async function main() {
 
 if (require.main === module) {
   main().catch((err) => {
-    console.error('[error] no se pudo arrancar el backend E5:', err.message);
+    const detalle = err.message
+      || (Array.isArray(err.errors) && err.errors.map((e) => e.message || e.code).join('; '))
+      || err.code
+      || String(err);
+    console.error('[error] no se pudo arrancar el backend E5:', detalle);
     process.exit(1);
   });
 }
