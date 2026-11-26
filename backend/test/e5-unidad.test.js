@@ -105,3 +105,19 @@ test('analitica: anonimiza dispositivo_id de forma irreversible y limpia líneas
   assert.equal(ok.ok, true);
   assert.equal(ok.evento.dispositivo_hash, h1);
 });
+
+test('bonus: inferencia de género y validación de filtros del catálogo', () => {
+  const { inferirGenero, parsearFiltros } = require('../src/e5/bonus');
+  assert.equal(inferirGenero('Gasolina', 'Daddy Yankee'), 'reggaeton');
+  assert.equal(inferirGenero('Hoy tengo ganas de ti', 'Marc Anthony Salsa Oficial'), 'salsa');
+  assert.equal(inferirGenero('Canción sin pistas', 'Canal X'), 'otros');
+
+  const f = parsearFiltros({ genero: 'Salsa', duracion_min: '120', duracion_max: '300', orden: 'duracion_asc', limite: '10' });
+  assert.equal(f.genero, 'salsa');
+  assert.equal(f.duracionMin, 120);
+  assert.equal(f.orden, 'duracion_asc');
+  assert.equal(parsearFiltros({}).orden, 'popularidad');
+  assert.throws(() => parsearFiltros({ duracion_min: '500', duracion_max: '10' }));
+  assert.throws(() => parsearFiltros({ orden: 'inexistente' }));
+  assert.throws(() => parsearFiltros({ limite: '1000' }));
+});

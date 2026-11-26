@@ -14,6 +14,9 @@ const { crearListas } = require('./listas');
 const { crearReproductor } = require('./reproductor');
 const { crearPlanificador } = require('./planificador');
 const { crearRouterE5 } = require('./rutas-e5');
+const { crearBonus } = require('./bonus');
+const { manejar, ErrorApi, idNumero } = require('./comun-e5');
+const { leerDispositivo } = require('../rutas-e4');
 const repo5 = require('./repositorio-e5');
 
 function montarE5(app, { pool, youtube, almacenEventos, ahora = Date.now, config = {} }) {
@@ -35,21 +38,44 @@ function montarE5(app, { pool, youtube, almacenEventos, ahora = Date.now, config
   const bloqueos = crearBloqueos({ pool, catalogo: e4.catalogo, flujo: e4.flujo, ahora, emisor });
   const listas = crearListas({ pool, catalogo: e4.catalogo, ahora, emisor });
   const reproductor = crearReproductor({ pool, cola: e4.cola, flujo: e4.flujo, ahora, emisor });
+  const bonus = crearBonus({
+    pool, e4, flujo: e4.flujo, ahora, emisor,
+    intervaloRespaldoMs: config.intervaloRespaldoMs || 24 * 60 * 60 * 1000,
+    carpetaRespaldos: config.carpetaRespaldos,
+  });
   const planificador = crearPlanificador({
-    pool, sesionesAdmin, reproductor, ahora, intervaloMs: config.intervaloPlanificadorMs || 15_000,
+    pool, sesionesAdmin, reproductor, bonus, ahora, intervaloMs: config.intervaloPlanificadorMs || 15_000,
   });
 
+  // Funciones opcionales para el cliente (sin autenticación de personal: usan el UUID del dispositivo como el E4)
+  app.post('/api/sesiones/:idSesion/solicitudes/:idSolicitud/cambiar-voto', manejar(async (req, res) => {
+    const uuid = leerDispositivo(req, { obligatorio: true });
+    const origen = idNumero('SOL', req.params.idSolicitud);
+    const destino = idNumero('SOL', req.body && req.body.nueva_solicitud_id);
+    if (origen === null || destino === null) {
+      throw new ErrorApi(400, 'solicitud_invalida', 'idSolicitud y nueva_solicitud_id deben tener el formato SOL-n.');
+    }
+    res.json(await bonus.cambiarVoto({ idSesion: req.params.idSesion, uuid, idSolicitudOrigen: origen, idSolicitudDestino: destino }));
+  }));
+  app.get('/api/catalogo/explorar', manejar(async (req, res) => {
+    res.json(await bonus.explorarCatalogo(req.query));
+  }));
+  app.get('/api/catalogo/generos', manejar(async (_req, res) => {
+    res.json(await bonus.listarGeneros());
+  }));
+
   const router = crearRouterE5({
-    pool, youtube, auth, sesionesAdmin, bloqueos, listas, reproductor, conectividad: e4.conectividad, ahora,
+    pool, youtube, auth, sesionesAdmin, bloqueos, listas, reproductor, bonus, conectividad: e4.conectividad, ahora,
   });
   app.use('/api/admin', router);
 
   // Panel web del E5 (administrador y DJ), separado del cliente de respaldo (public/index.html)
   const dirAdmin = path.join(__dirname, '..', '..', 'public', 'admin');
   app.get('/admin', (_req, res) => res.sendFile(path.join(dirAdmin, 'index.html')));
+  app.get('/sonido', (_req, res) => res.sendFile(path.join(dirAdmin, 'sonido.html')));
   app.use('/admin', express.static(dirAdmin));
 
-  const servicios = { auth, sesionesAdmin, bloqueos, listas, reproductor, planificador, emisor };
+  const servicios = { auth, sesionesAdmin, bloqueos, listas, reproductor, bonus, planificador, emisor };
   app.locals.e5 = servicios;
   return servicios;
 }
