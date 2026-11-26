@@ -10,6 +10,7 @@
   "scripts": {
     "start": "node src/server.js",
     "start:e5": "node src/e5/server-e5.js",
+    "bootstrap:prod": "node scripts/bootstrap-prod.js",
     "test": "node --test",
     "test:unit": "node --test test/backend.test.js test/contrato-eventos.test.js test/e4-unidad.test.js",
     "test:integration": "node --test test/e4-esquema.test.js test/e4-solicitudes.test.js test/e4-intervalo.test.js test/e4-reproduccion.test.js test/e4-concurrencia.test.js test/e4-flujo.test.js test/e4-contrato.test.js",

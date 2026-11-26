@@ -30,7 +30,9 @@ async function main() {
     pool = crearPool({ connectionString: cfg.databaseUrl });
     const aplicadas = await migrar(pool);
     if (aplicadas.length > 0) console.log(`[db] migraciones aplicadas: ${aplicadas.join(', ')}`);
-    await cargarSesionesEnBd(pool, sesiones);
+    if (process.env.SEMILLA_MOCK === 'true') {
+      await cargarSesionesEnBd(pool, sesiones);
+    }
     if (process.env.CATALOGO_SEMILLA === 'true') {
       await cargarCatalogoSemilla(pool, leerCatalogoSemilla(), Date.now());
       console.log('[db] catálogo semilla cargado (CATALOGO_SEMILLA=true)');

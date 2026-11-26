@@ -19,19 +19,49 @@ const { crearOActualizarUsuario } = require('./auth');
 const CARPETA_MIGRACIONES_E5 = path.join(__dirname, '..', '..', 'migrations-e5');
 const port = Number(process.env.PORT) || 3000;
 
-async function sembrarPersonalInicial(pool) {
+function semillaMockHabilitada(env = process.env) {
+  return String(env.SEMILLA_MOCK || '').trim().toLowerCase() === 'true';
+}
+
+async function sembrarPersonalInicial(pool, env = process.env) {
   const total = await repo5.contarUsuarios(pool);
   const est = 'EST-MOCK-001';
-  if (!(await repo5.obtenerEstablecimiento(pool, est))) return;
-  const claveAdmin = process.env.E5_ADMIN_CLAVE || 'AdminPonga2026!';
-  const claveDj = process.env.E5_DJ_CLAVE || 'DjPonga2026!';
+  if (!(await repo5.obtenerEstablecimiento(pool, est))) return { sembrados: false };
+  const faltaDj = total === 1 && !(await repo5.obtenerUsuarioPorNombre(pool, 'dj'));
+  if (total !== 0 && !faltaDj) return { sembrados: false };
+
+  const claveAdmin = env.E5_ADMIN_CLAVE;
+  const claveDj = env.E5_DJ_CLAVE;
   if (total === 0) {
+    if (!claveAdmin || !claveDj) {
+      throw new Error('Faltan E5_ADMIN_CLAVE y/o E5_DJ_CLAVE para crear los usuarios iniciales.');
+    }
     await crearOActualizarUsuario(pool, { idEstablecimiento: est, usuario: 'admin', nombre: 'Administrador La Nota', rol: 'admin', clave: claveAdmin });
     await crearOActualizarUsuario(pool, { idEstablecimiento: est, usuario: 'dj', nombre: 'DJ La Nota', rol: 'dj', clave: claveDj });
     console.log('[e5] usuarios iniciales creados en EST-MOCK-001: usuario "admin" (admin) y "dj" (dj)');
-  } else if (total === 1 && !(await repo5.obtenerUsuarioPorNombre(pool, 'dj'))) {
-    await crearOActualizarUsuario(pool, { idEstablecimiento: est, usuario: 'dj', nombre: 'DJ La Nota', rol: 'dj', clave: claveDj });
-    console.log('[e5] usuario inicial "dj" (dj) creado en EST-MOCK-001');
+    return { sembrados: true };
+  }
+  if (!claveDj) {
+    throw new Error('Falta E5_DJ_CLAVE para crear el usuario inicial "dj".');
+  }
+  await crearOActualizarUsuario(pool, { idEstablecimiento: est, usuario: 'dj', nombre: 'DJ La Nota', rol: 'dj', clave: claveDj });
+  console.log('[e5] usuario inicial "dj" (dj) creado en EST-MOCK-001');
+  return { sembrados: true };
+}
+
+async function inicializarDatosBase({ pool, sesiones, env = process.env, ahora = Date.now }) {
+  const conSemillaMock = semillaMockHabilitada(env);
+  if (conSemillaMock) {
+    const { rows: [{ n: totalSesiones }] } = await pool.query('SELECT COUNT(*)::int AS n FROM sesion');
+    if (totalSesiones === 0) {
+      await cargarSesionesEnBd(pool, sesiones);
+    }
+  }
+  if (env.CATALOGO_SEMILLA === 'true') {
+    await cargarCatalogoSemilla(pool, leerCatalogoSemilla(), ahora());
+  }
+  if (conSemillaMock) {
+    await sembrarPersonalInicial(pool, env);
   }
 }
 
@@ -51,15 +81,7 @@ async function main() {
     console.log(`[db] migraciones aplicadas: ${[...aplicadasE4, ...aplicadasE5].join(', ')}`);
   }
 
-  // Solo siembra las sesiones del mock si aún no existen en la BD (no sobrescribe sesiones ya cerradas o desactivadas)
-  const { rows: [{ n: totalSesiones }] } = await pool.query('SELECT COUNT(*)::int AS n FROM sesion');
-  if (totalSesiones === 0) {
-    await cargarSesionesEnBd(pool, sesiones);
-  }
-  if (process.env.CATALOGO_SEMILLA === 'true') {
-    await cargarCatalogoSemilla(pool, leerCatalogoSemilla(), Date.now());
-  }
-  await sembrarPersonalInicial(pool);
+  await inicializarDatosBase({ pool, sesiones, env: process.env });
 
   const app = crearApp({
     sesiones,
@@ -110,4 +132,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { CARPETA_MIGRACIONES_E5, sembrarPersonalInicial };
+module.exports = { CARPETA_MIGRACIONES_E5, semillaMockHabilitada, sembrarPersonalInicial, inicializarDatosBase };
