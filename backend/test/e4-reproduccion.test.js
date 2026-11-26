@@ -222,8 +222,8 @@ test('C27: escenario completo con reproducciones simuladas exitosas y fallidas',
   await sim.inactiva(SESION);
   const { rows } = await e.pool.query('SELECT resultado FROM reproduccion ORDER BY id_reproduccion');
   assert.deepEqual(rows.map((x) => x.resultado), resultados);
-  // propia (exitosa, no cuenta) + fallida (no cuenta) + 3 exitosas ajenas → contador 3, intervalo 2 cumplido
-  assert.deepEqual(await e.miVotacion(A), { puede_votar: true, intervalo_canciones: 2, reproducciones_contadas: 3, canciones_restantes: 0 });
+  // propia (exitosa, no cuenta) + fallida (no cuenta) + 3 exitosas ajenas → contador 3, intervalo 1 cumplido
+  assert.deepEqual(await e.miVotacion(A), { puede_votar: true, intervalo_canciones: 1, reproducciones_contadas: 3, canciones_restantes: 0 });
   assert.equal((await e.solicitar(A, cancion(2))).status, 201);
 }));
 

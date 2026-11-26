@@ -25,6 +25,12 @@
     ytVideoCargado: null,
     ytListo: false,
     toast: null,
+    sse: null,
+    sseSesionId: null,
+    sseVersion: null,
+    ssePerdioConexion: false,
+    sseEnVuelo: false,
+    ssePendiente: false,
   };
 
   function esc(s) {
@@ -117,6 +123,7 @@
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       if (res.status === 401 && state.usuario) {
+        cerrarFlujo();
         state.usuario = null;
         render();
       }
@@ -247,6 +254,125 @@
     } else if (rep.estado_reproduccion === 'reproduciendo' && typeof state.ytPlayer.playVideo === 'function') {
       state.ytPlayer.playVideo();
     }
+  }
+
+  function cerrarFlujo() {
+    if (state.sse) {
+      try { state.sse.close(); } catch {}
+    }
+    state.sse = null;
+    state.sseSesionId = null;
+    state.sseVersion = null;
+    state.ssePerdioConexion = false;
+    state.ssePendiente = false;
+  }
+
+  async function refrescarEnVivo() {
+    if (!state.usuario) return;
+    if (state.sseEnVuelo) {
+      state.ssePendiente = true;
+      return;
+    }
+    const activo = document.activeElement;
+    const editandoFormulario = activo && /^(INPUT|TEXTAREA|SELECT)$/.test(activo.tagName)
+      && state.tab !== 'resumen' && state.tab !== 'reproduccion';
+    if (document.getElementById('modal-bloq') || editandoFormulario) {
+      state.ssePendiente = true;
+      setTimeout(() => { refrescarEnVivo(); }, 500);
+      return;
+    }
+    state.sseEnVuelo = true;
+    try {
+      await cargarPanel();
+    } catch {
+      // Si falla un refresco puntual, el siguiente evento o reconexión reintenta.
+    } finally {
+      state.sseEnVuelo = false;
+      if (state.ssePendiente) {
+        state.ssePendiente = false;
+        setTimeout(() => { refrescarEnVivo(); }, 150);
+      }
+    }
+  }
+
+  function sincronizarFlujo(sesionActual) {
+    if (!state.usuario || !sesionActual || sesionActual.estado !== 'activa' || sesionActual.qr_estado !== 'activo') {
+      cerrarFlujo();
+      return;
+    }
+    const idSesion = sesionActual.id_sesion;
+    if (state.sse && state.sseSesionId === idSesion && state.sse.readyState !== EventSource.CLOSED) {
+      return;
+    }
+    cerrarFlujo();
+    if (typeof EventSource !== 'function') return;
+
+    const es = new EventSource(`/api/sesiones/${encodeURIComponent(idSesion)}/cola/flujo`, { withCredentials: true });
+    state.sse = es;
+    state.sseSesionId = idSesion;
+
+    es.addEventListener('open', () => {
+      if (state.sse !== es) return;
+      if (state.ssePerdioConexion) {
+        state.ssePerdioConexion = false;
+        refrescarEnVivo();
+      }
+    });
+
+    es.addEventListener('estado', (ev) => {
+      if (state.sse !== es) return;
+      try {
+        const datos = JSON.parse(ev.data);
+        if (datos && typeof datos.version === 'number') {
+          if (state.sseVersion === null) {
+            state.sseVersion = datos.version;
+            return;
+          }
+          if (datos.version === state.sseVersion) return;
+          state.sseVersion = datos.version;
+        }
+      } catch {}
+      refrescarEnVivo();
+    });
+
+    es.addEventListener('reproductor', (ev) => {
+      if (state.sse !== es) return;
+      try {
+        const datos = JSON.parse(ev.data);
+        if (datos && datos.sesion_id && datos.sesion_id !== state.sesionId) return;
+        const actual = state.panel && state.panel.reproduccion && state.panel.reproduccion.estado_reproduccion;
+        if (datos && datos.estado_reproduccion && actual === datos.estado_reproduccion) return;
+      } catch {}
+      refrescarEnVivo();
+    });
+
+    es.addEventListener('conectividad', (ev) => {
+      if (state.sse !== es) return;
+      try {
+        const datos = JSON.parse(ev.data);
+        if (!datos || (datos.sesion_id && datos.sesion_id !== state.sesionId)) return;
+        if (typeof datos.dispositivos_activos === 'number') {
+          if (state.panel) state.panel.dispositivos_activos = datos.dispositivos_activos;
+          const pill = document.getElementById('pill-dispositivos');
+          if (pill) pill.textContent = `Dispositivos activos: ${datos.dispositivos_activos}`;
+        }
+      } catch {}
+    });
+
+    es.addEventListener('sesion_cerrada', () => {
+      if (state.sse !== es) return;
+      cerrarFlujo();
+      refrescarEnVivo();
+    });
+
+    es.addEventListener('error', () => {
+      if (state.sse !== es) return;
+      state.ssePerdioConexion = true;
+      if (es.readyState === EventSource.CLOSED) {
+        state.sse = null;
+        state.sseSesionId = null;
+      }
+    });
   }
 
   async function cargarPanel() {
@@ -430,7 +556,7 @@
               <span class="pill ${sesionActual ? 'ok' : 'err'}"><span class="dot"></span>${sesionActual ? 'Sesión activa' : 'Sesión: ninguna'}</span>
               <span class="pill ${sesionActual && sesionActual.qr_estado === 'activo' ? 'ok' : 'warn'}"><span class="dot"></span>QR ${esc(sesionActual ? sesionActual.qr_estado : 'inactivo')}</span>
               ${p.configuracion.pausa_manual ? '<span class="pill warn"><span class="dot"></span>Pausa manual</span>' : ''}
-              <span class="pill accent">Dispositivos activos: ${p.dispositivos_activos}</span>
+              <span id="pill-dispositivos" class="pill accent">Dispositivos activos: ${p.dispositivos_activos}</span>
             </div>
           </div>
           <div id="tab-content"></div>
@@ -448,6 +574,7 @@
     }));
     document.getElementById('btn-refrescar').addEventListener('click', () => cargarPanel());
     document.getElementById('btn-salir').addEventListener('click', async () => {
+      cerrarFlujo();
       await api('POST', '/auth/logout');
       if (state.ytPlayer && typeof state.ytPlayer.destroy === 'function') { try { state.ytPlayer.destroy(); } catch {} }
       state.ytPlayer = null;
@@ -456,6 +583,8 @@
       state.panel = null;
       render();
     });
+
+    sincronizarFlujo(sesionActual);
 
     const cont = document.getElementById('tab-content');
     if (state.tab === 'resumen') renderResumen(cont, p, sesionActual, rep, esAdmin);

@@ -42,9 +42,9 @@
           },
           "mi_votacion": {
             "puede_votar": false,
-            "intervalo_canciones": 2,
+            "intervalo_canciones": 1,
             "reproducciones_contadas": 0,
-            "canciones_restantes": 2
+            "canciones_restantes": 1
           }
         }
       }
@@ -120,9 +120,9 @@
           },
           "mi_votacion": {
             "puede_votar": false,
-            "intervalo_canciones": 2,
+            "intervalo_canciones": 1,
             "reproducciones_contadas": 0,
-            "canciones_restantes": 2
+            "canciones_restantes": 1
           }
         }
       }
@@ -168,9 +168,9 @@
           },
           "mi_votacion": {
             "puede_votar": false,
-            "intervalo_canciones": 2,
+            "intervalo_canciones": 1,
             "reproducciones_contadas": 0,
-            "canciones_restantes": 2
+            "canciones_restantes": 1
           }
         }
       }
@@ -194,9 +194,9 @@
             "codigo": "intervalo_no_cumplido",
             "mensaje": "Todavía no tienes otro voto disponible, por eso no puedes solicitar otra canción.",
             "detalle": {
-              "intervalo_canciones": 2,
+              "intervalo_canciones": 1,
               "reproducciones_contadas": 0,
-              "canciones_restantes": 2
+              "canciones_restantes": 1
             }
           }
         }
@@ -239,9 +239,9 @@
           },
           "mi_votacion": {
             "puede_votar": false,
-            "intervalo_canciones": 2,
+            "intervalo_canciones": 1,
             "reproducciones_contadas": 0,
-            "canciones_restantes": 2
+            "canciones_restantes": 1
           }
         }
       }
@@ -277,13 +277,13 @@
           },
           "reglas_votacion": {
             "dispositivos_activos": 2,
-            "intervalo_canciones": 2
+            "intervalo_canciones": 1
           },
           "mi_votacion": {
             "puede_votar": false,
-            "intervalo_canciones": 2,
+            "intervalo_canciones": 1,
             "reproducciones_contadas": 0,
-            "canciones_restantes": 2
+            "canciones_restantes": 1
           },
           "cola": [
             {
@@ -353,7 +353,7 @@
           },
           "reglas_votacion": {
             "dispositivos_activos": 2,
-            "intervalo_canciones": 2
+            "intervalo_canciones": 1
           },
           "cola": [
             {
@@ -449,9 +449,9 @@
           },
           "mi_votacion": {
             "puede_votar": false,
-            "intervalo_canciones": 2,
+            "intervalo_canciones": 1,
             "reproducciones_contadas": 0,
-            "canciones_restantes": 2
+            "canciones_restantes": 1
           }
         }
       }
@@ -497,9 +497,9 @@
           },
           "mi_votacion": {
             "puede_votar": false,
-            "intervalo_canciones": 2,
+            "intervalo_canciones": 1,
             "reproducciones_contadas": 0,
-            "canciones_restantes": 2
+            "canciones_restantes": 1
           }
         }
       }
@@ -545,9 +545,9 @@
           },
           "mi_votacion": {
             "puede_votar": false,
-            "intervalo_canciones": 2,
+            "intervalo_canciones": 1,
             "reproducciones_contadas": 0,
-            "canciones_restantes": 2
+            "canciones_restantes": 1
           }
         }
       }
@@ -972,7 +972,7 @@
           "",
           "id: 11",
           "event: estado",
-          "data: {\"sesion_id\":\"SES-MOCK-001\",\"version\":11,\"generado_en\":\"2026-11-10T20:21:30.000Z\",\"reproduccion_actual\":null,\"reglas_votacion\":{\"dispositivos_activos\":3,\"intervalo_canciones\":2},\"mi_votacion\":{\"puede_votar\":true,\"intervalo_canciones\":2,\"reproducciones_contadas\":1,\"canciones_restantes\":0},\"cola\":[]}"
+          "data: {\"sesion_id\":\"SES-MOCK-001\",\"version\":11,\"generado_en\":\"2026-11-10T20:21:30.000Z\",\"reproduccion_actual\":null,\"reglas_votacion\":{\"dispositivos_activos\":3,\"intervalo_canciones\":1},\"mi_votacion\":{\"puede_votar\":true,\"intervalo_canciones\":1,\"reproducciones_contadas\":1,\"canciones_restantes\":0},\"cola\":[]}"
         ]
       }
     },
@@ -986,7 +986,7 @@
         "lineas": [
           "id: 12",
           "event: estado",
-          "data: {\"sesion_id\":\"SES-MOCK-001\",\"version\":12,\"generado_en\":\"2026-11-10T20:21:40.000Z\",\"reproduccion_actual\":null,\"reglas_votacion\":{\"dispositivos_activos\":3,\"intervalo_canciones\":2},\"mi_votacion\":{\"puede_votar\":false,\"intervalo_canciones\":2,\"reproducciones_contadas\":1,\"canciones_restantes\":1},\"cola\":[{\"posicion\":1,\"id_solicitud\":\"SOL-4\",\"estado\":\"pendiente\",\"total_votos\":1,\"fecha_solicitud\":\"2026-11-10T20:21:40.000Z\",\"cancion\":{\"youtube_video_id\":\"fJ9rUzIMcZQ\",\"titulo\":\"Bohemian Rhapsody\",\"artista_canal\":\"Queen Official\",\"duracion_segundos\":355,\"url_miniatura\":\"https://i.ytimg.com/vi/fJ9rUzIMcZQ/mqdefault.jpg\"},\"ya_voto\":false,\"es_mia\":false,\"espera_estimada_segundos\":0}]}"
+          "data: {\"sesion_id\":\"SES-MOCK-001\",\"version\":12,\"generado_en\":\"2026-11-10T20:21:40.000Z\",\"reproduccion_actual\":null,\"reglas_votacion\":{\"dispositivos_activos\":3,\"intervalo_canciones\":1},\"mi_votacion\":{\"puede_votar\":true,\"intervalo_canciones\":1,\"reproducciones_contadas\":1,\"canciones_restantes\":0},\"cola\":[{\"posicion\":1,\"id_solicitud\":\"SOL-4\",\"estado\":\"pendiente\",\"total_votos\":1,\"fecha_solicitud\":\"2026-11-10T20:21:40.000Z\",\"cancion\":{\"youtube_video_id\":\"fJ9rUzIMcZQ\",\"titulo\":\"Bohemian Rhapsody\",\"artista_canal\":\"Queen Official\",\"duracion_segundos\":355,\"url_miniatura\":\"https://i.ytimg.com/vi/fJ9rUzIMcZQ/mqdefault.jpg\"},\"ya_voto\":false,\"es_mia\":false,\"espera_estimada_segundos\":0}]}"
         ]
       }
     },

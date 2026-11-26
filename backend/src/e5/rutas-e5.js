@@ -57,7 +57,7 @@ function crearRouterE5({ pool, youtube, auth, sesionesAdmin, bloqueos, listas, r
       || sesiones[0]
       || null;
     const rep = sesionObj ? await reproductor.estadoActual(idEst, sesionObj.id_sesion) : null;
-    const activos = conectividad ? conectividad.contarActivos(idEst) : 0;
+    const activos = conectividad && sesionObj ? conectividad.contarActivos(sesionObj.id_sesion) : 0;
 
     res.json({
       establecimiento: est,

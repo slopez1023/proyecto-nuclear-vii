@@ -90,10 +90,10 @@ function crearCola({ pool, catalogo, conectividad, ahora, almacenEventos, alCamb
     return verificarSesion(await repo.obtenerSesion(pool, idSesion));
   }
 
-  const intervaloVigente = (idEst) => intervaloPorActivos(conectividad.contarActivos(idEst));
+  const intervaloVigente = (idSesion) => intervaloPorActivos(conectividad.contarActivos(idSesion));
 
-  async function miVotacion(q, idDispositivo, idEst, { ocioso = false } = {}) {
-    return calcularMiVotacion(await repo.contadorIntervalo(q, idDispositivo, idEst), intervaloVigente(idEst), { ocioso });
+  async function miVotacion(q, idDispositivo, idEst, idSesion, { ocioso = false } = {}) {
+    return calcularMiVotacion(await repo.contadorIntervalo(q, idDispositivo, idEst), intervaloVigente(idSesion), { ocioso });
   }
 
   // ------------------------------------------------------------ estado de la cola (C1 y SSE)
@@ -104,7 +104,7 @@ function crearCola({ pool, catalogo, conectividad, ahora, almacenEventos, alCamb
     const actual = await repo.reproduccionEnCurso(q, sesion.id_sesion);
     const pendientes = await repo.leerColaPendiente(q, sesion.id_sesion);
     const restante = restanteActual(actual, t);
-    const activos = conectividad.contarActivos(sesion.id_establecimiento);
+    const activos = conectividad.contarActivos(sesion.id_sesion);
     return {
       sesion, t, actual, restante, pendientes,
       esperas: esperasEstimadas(restante, pendientes),
@@ -195,8 +195,8 @@ function crearCola({ pool, catalogo, conectividad, ahora, almacenEventos, alCamb
     }
     // 4.4 Intervalo (con la regla de inactividad de H1: cola vacía y nada sonando → se puede pedir)
     const ocioso = !viva && antes.length === 0 && !(await repo.reproduccionEnCurso(client, idSesion));
-    const mvNormal = await miVotacion(client, idDispositivo, idEst);
-    const mvAntes = ocioso ? await miVotacion(client, idDispositivo, idEst, { ocioso: true }) : mvNormal;
+    const mvNormal = await miVotacion(client, idDispositivo, idEst, idSesion);
+    const mvAntes = ocioso ? await miVotacion(client, idDispositivo, idEst, idSesion, { ocioso: true }) : mvNormal;
     if (!mvAntes.puede_votar) {
       throw errorIntervalo(mvAntes, 'Todavía no tienes otro voto disponible, por eso no puedes solicitar otra canción.');
     }
@@ -214,7 +214,7 @@ function crearCola({ pool, catalogo, conectividad, ahora, almacenEventos, alCamb
         resultado: viva ? 'voto_sumado' : 'solicitud_creada',
         solicitud: vista.json,
         voto: votoJson(voto),
-        mi_votacion: await miVotacion(client, idDispositivo, idEst),
+        mi_votacion: await miVotacion(client, idDispositivo, idEst, idSesion),
       },
       analitica: {
         idSolicitud,
@@ -222,7 +222,7 @@ function crearCola({ pool, catalogo, conectividad, ahora, almacenEventos, alCamb
         posicionDespues: vista.posicion,
         totalVotos: vista.totalVotos,
         intervalo: mvAntes.intervalo_canciones,
-        activos: conectividad.contarActivos(idEst),
+        activos: conectividad.contarActivos(idSesion),
         espera: vista.json.espera_estimada_segundos,
         estadoSolicitud: vista.json.estado,
         porInactividad: mvAntes.puede_votar && !mvNormal.puede_votar,
@@ -312,7 +312,7 @@ function crearCola({ pool, catalogo, conectividad, ahora, almacenEventos, alCamb
         { id_solicitud: idTexto('SOL', idSolicitud) });
     }
     // 4.4 Intervalo
-    const mvAntes = await miVotacion(client, idDispositivo, idEst);
+    const mvAntes = await miVotacion(client, idDispositivo, idEst, idSesion);
     if (!mvAntes.puede_votar) throw errorIntervalo(mvAntes, 'Aún no puedes votar de nuevo.');
 
     const antes = await repo.leerColaPendiente(client, idSesion);
@@ -320,7 +320,7 @@ function crearCola({ pool, catalogo, conectividad, ahora, almacenEventos, alCamb
     sesion.version_cola = await repo.incrementarVersion(client, idSesion);
     const vista = await vistaSolicitud(client, sesion, idSolicitud, idDispositivo);
     return {
-      respuesta: { voto: votoJson(voto), solicitud: vista.json, mi_votacion: await miVotacion(client, idDispositivo, idEst) },
+      respuesta: { voto: votoJson(voto), solicitud: vista.json, mi_votacion: await miVotacion(client, idDispositivo, idEst, idSesion) },
       analitica: { posicionAntes: posicionDe(antes, idSolicitud), posicionDespues: vista.posicion,
         totalVotos: vista.totalVotos, intervalo: mvAntes.intervalo_canciones, estadoSolicitud: vista.json.estado },
     };

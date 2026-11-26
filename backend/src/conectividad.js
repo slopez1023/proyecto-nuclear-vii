@@ -1,10 +1,10 @@
 'use strict';
 /**
- * Dispositivos activos = conectividad actual (propuesta E4, sección 7).
- * Un dispositivo está activo en un establecimiento si tiene al menos una conexión SSE abierta con
- * X-Dispositivo-Id en alguna sesión de ese establecimiento, o se desconectó hace menos de `graciaMs`.
+ * Dispositivos activos por sesión = conectividad actual.
+ * Un dispositivo está activo en una sesión si tiene al menos una conexión SSE abierta con
+ * X-Dispositivo-Id en esa sesión, o se desconectó hace menos de `graciaMs`.
  * Registro en memoria: hay un solo proceso, así que es la fuente fiable.
- * Los dispositivos virtuales (simulación, nivel 3) se suman al conteo.
+ * Los dispositivos virtuales (simulación, nivel 3) se suman al conteo de la sesión.
  */
 const { intervaloPorActivos } = require('./comun-e4');
 
@@ -17,60 +17,66 @@ function crearConectividad({
   graciaMs = 20_000,
   programar = (fn, ms) => setTimeout(fn, ms).unref(),
 } = {}) {
-  const porEstablecimiento = new Map(); // idEst -> Map(uuid -> { abiertas, desconectadoEn })
-  const virtuales = new Map(); // idEst -> número
-  const ultimoIntervalo = new Map(); // idEst -> intervalo comunicado por última vez
-  const oyentes = [];
+  const porSesion = new Map(); // idSesion -> Map(uuid -> { abiertas, desconectadoEn })
+  const virtuales = new Map(); // idSesion -> número
+  const ultimoIntervalo = new Map(); // idSesion -> intervalo comunicado por última vez
+  const ultimoConteo = new Map(); // idSesion -> conteo neto comunicado por última vez
+  const oyentesRango = [];
+  const oyentesConteo = [];
 
-  const dispositivos = (idEst) => {
-    if (!porEstablecimiento.has(idEst)) porEstablecimiento.set(idEst, new Map());
-    return porEstablecimiento.get(idEst);
+  const dispositivos = (idSesion) => {
+    if (!porSesion.has(idSesion)) porSesion.set(idSesion, new Map());
+    return porSesion.get(idSesion);
   };
 
-  function contarActivos(idEst) {
+  function contarActivos(idSesion) {
     const t = ahora();
     let n = 0;
-    const mapa = porEstablecimiento.get(idEst);
+    const mapa = porSesion.get(idSesion);
     if (mapa) {
       for (const [uuid, d] of mapa) {
         if (d.abiertas > 0 || t - d.desconectadoEn < graciaMs) n++;
         else mapa.delete(uuid); // gracia vencida: se olvida
       }
     }
-    return n + (virtuales.get(idEst) || 0);
+    return n + (virtuales.get(idSesion) || 0);
   }
 
-  /** Avisa a los oyentes si el intervalo del establecimiento cambió de rango. */
-  function revisar(idEst) {
-    const actual = intervaloPorActivos(contarActivos(idEst));
-    const previo = ultimoIntervalo.has(idEst) ? ultimoIntervalo.get(idEst) : intervaloPorActivos(0);
-    ultimoIntervalo.set(idEst, actual);
-    if (actual !== previo) for (const fn of oyentes) fn(idEst);
+  /** Avisa cuando cambia el conteo neto de dispositivos o cuando cambia el rango de votación de la sesión. */
+  function revisar(idSesion) {
+    const activos = contarActivos(idSesion);
+    const previoConteo = ultimoConteo.has(idSesion) ? ultimoConteo.get(idSesion) : 0;
+    const actual = intervaloPorActivos(activos);
+    const previo = ultimoIntervalo.has(idSesion) ? ultimoIntervalo.get(idSesion) : intervaloPorActivos(0);
+    ultimoConteo.set(idSesion, activos);
+    ultimoIntervalo.set(idSesion, actual);
+    if (activos !== previoConteo) for (const fn of oyentesConteo) fn(idSesion, activos, actual);
+    if (actual !== previo) for (const fn of oyentesRango) fn(idSesion);
   }
 
-  function conectar(idEst, uuid) {
-    const d = dispositivos(idEst).get(uuid) || { abiertas: 0, desconectadoEn: null };
+  function conectar(idSesion, uuid) {
+    const d = dispositivos(idSesion).get(uuid) || { abiertas: 0, desconectadoEn: null };
     d.abiertas++;
     d.desconectadoEn = null;
-    dispositivos(idEst).set(uuid, d);
-    revisar(idEst);
+    dispositivos(idSesion).set(uuid, d);
+    revisar(idSesion);
   }
 
-  function desconectar(idEst, uuid) {
-    const d = dispositivos(idEst).get(uuid);
+  function desconectar(idSesion, uuid) {
+    const d = dispositivos(idSesion).get(uuid);
     if (!d || d.abiertas === 0) return;
     d.abiertas--;
     if (d.abiertas === 0) {
       d.desconectadoEn = ahora();
-      // Al vencer la gracia el dispositivo deja de contar: puede cambiar el rango.
-      programar(() => revisar(idEst), graciaMs + 1);
+      // Al vencer la gracia el dispositivo deja de contar: puede cambiar el conteo y/o el rango.
+      programar(() => revisar(idSesion), graciaMs + 1);
     }
-    revisar(idEst);
+    revisar(idSesion);
   }
 
-  function fijarVirtuales(idEst, cantidad) {
-    virtuales.set(idEst, cantidad);
-    revisar(idEst);
+  function fijarVirtuales(idSesion, cantidad) {
+    virtuales.set(idSesion, cantidad);
+    revisar(idSesion);
   }
 
   return {
@@ -79,8 +85,10 @@ function crearConectividad({
     desconectar,
     fijarVirtuales,
     revisar,
-    /** Registra una función que recibe idEst cuando el rango (intervalo) del establecimiento cambia. */
-    alCambiarRango: (fn) => oyentes.push(fn),
+    /** Registra una función que recibe idSesion cuando el rango (intervalo) de la sesión cambia. */
+    alCambiarRango: (fn) => oyentesRango.push(fn),
+    /** Registra una función que recibe (idSesion, activos, intervalo) cuando cambia el conteo neto de la sesión. */
+    alCambiarConteo: (fn) => oyentesConteo.push(fn),
   };
 }
 

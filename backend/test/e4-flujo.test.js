@@ -101,7 +101,7 @@ test('reconexión: se ignora Last-Event-ID y se envía el estado actual', opcion
 }));
 
 test('C12: solo cuentan como activos los dispositivos con flujo abierto y X-Dispositivo-Id; gracia de 20 s', opciones, conEntorno(async (e, abrir) => {
-  const activos = () => e.conectividad.contarActivos(ESTABLECIMIENTO);
+  const activos = () => e.conectividad.contarActivos(SESION);
   const publica = await abrir();
   await publica.esperarEstado();
   assert.equal(activos(), 0); // la vista pública no cuenta
@@ -142,7 +142,7 @@ test('reconectar dentro de la gracia no cambia el conteo', opciones, conEntorno(
   const f2 = await abrir({ dispositivo: A });
   await f2.esperarEstado();
   e.reloj.avanzar(60_000);
-  assert.equal(e.conectividad.contarActivos(ESTABLECIMIENTO), 1);
+  assert.equal(e.conectividad.contarActivos(SESION), 1);
 }));
 
 test('cambio de rango por conectividad: nueva versión y reenvío a las conexiones del establecimiento', opciones, conEntorno(async (e, abrir) => {
@@ -174,4 +174,56 @@ test('apagado: cerrar() termina los flujos abiertos', opciones, conEntorno(async
   await f.fin;
   assert.equal(f.terminado(), true);
   assert.equal(e.servicios.flujo.totalConexiones(), 0);
+}));
+
+test('aislamiento por sesión: dos sesiones activas del mismo establecimiento no mezclan conteo ni intervalo y una cerrada no cambia version_cola', opciones, conEntorno(async (e, abrir) => {
+  await e.pool.query(
+    `INSERT INTO sesion (id_sesion, id_establecimiento, qr_token, estado, qr_estado) VALUES
+     ('SES-ACTIVA-B', 'EST-MOCK-001', 'token-activa-b', 'activa', 'activo'),
+     ('SES-CERRADA-C', 'EST-MOCK-001', 'token-cerrada-c', 'cerrada', 'inactivo')`,
+  );
+  const verCerradaAntes = (await e.pool.query(`SELECT version_cola FROM sesion WHERE id_sesion = 'SES-CERRADA-C'`)).rows[0].version_cola;
+
+  const fa1 = await abrir({ dispositivo: A, sesion: SESION });
+  const fa2 = await abrir({ dispositivo: B, sesion: SESION });
+  const fb1 = await abrir({ dispositivo: uuid(11), sesion: 'SES-ACTIVA-B' });
+  const fb2 = await abrir({ dispositivo: uuid(12), sesion: 'SES-ACTIVA-B' });
+  const fb3 = await abrir({ dispositivo: uuid(13), sesion: 'SES-ACTIVA-B' });
+  const fb4 = await abrir({ dispositivo: uuid(14), sesion: 'SES-ACTIVA-B' });
+  await Promise.all([fa1.esperarEstado(), fa2.esperarEstado(), fb1.esperarEstado(), fb2.esperarEstado(), fb3.esperarEstado(), fb4.esperarEstado()]);
+
+  assert.equal(e.conectividad.contarActivos(SESION), 2);
+  assert.equal(e.conectividad.contarActivos('SES-ACTIVA-B'), 4);
+  assert.deepEqual((await e.cola(null, SESION)).body.reglas_votacion, { dispositivos_activos: 2, intervalo_canciones: 1 });
+  assert.deepEqual((await e.cola(null, 'SES-ACTIVA-B')).body.reglas_votacion, { dispositivos_activos: 4, intervalo_canciones: 2 });
+
+  const verCerradaDespues = (await e.pool.query(`SELECT version_cola FROM sesion WHERE id_sesion = 'SES-CERRADA-C'`)).rows[0].version_cola;
+  assert.equal(verCerradaDespues, verCerradaAntes);
+}));
+
+test('SSE conectividad: notifica al entrar, no duplica por UUID, respeta gracia de 20 s y no incrementa version_cola en mismo rango', opciones, conEntorno(async (e, abrir) => {
+  const publica = await abrir();
+  const inicial = await publica.esperarEstado();
+  const verInicial = (await e.pool.query(`SELECT version_cola FROM sesion WHERE id_sesion = $1`, [SESION])).rows[0].version_cola;
+
+  const fa = await abrir({ dispositivo: A });
+  await fa.esperarEstado();
+  await publica.esperar((ev) => ev.event === 'conectividad' && ev.data.dispositivos_activos === 1 && ev.data.intervalo_canciones === 1);
+  assert.equal((await e.pool.query(`SELECT version_cola FROM sesion WHERE id_sesion = $1`, [SESION])).rows[0].version_cola, verInicial);
+
+  const fa2 = await abrir({ dispositivo: A });
+  await fa2.esperarEstado();
+  assert.equal(e.conectividad.contarActivos(SESION), 1);
+
+  const fb = await abrir({ dispositivo: B });
+  await fb.esperarEstado();
+  await publica.esperar((ev) => ev.event === 'conectividad' && ev.data.dispositivos_activos === 2 && ev.data.sesion_id === SESION);
+
+  await fb.cerrar();
+  await e.servicios.flujo.esperarConexiones(3);
+  assert.equal(e.conectividad.contarActivos(SESION), 2);
+  e.reloj.avanzar(20_001);
+  await e.temporizadores.ejecutarPendientes();
+  await publica.esperar((ev) => ev.event === 'conectividad' && ev.data.dispositivos_activos === 1);
+  assert.equal(inicial.version, verInicial);
 }));

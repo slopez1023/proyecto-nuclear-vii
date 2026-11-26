@@ -118,8 +118,8 @@ async function crearEntorno({ simulacion = true, token = TOKEN, catalogo = CATAL
       { cabeceras: reproductor, cuerpo: { resultado, segundos_reproducidos: 200, ...extra } }),
     /** mi_votacion actual del dispositivo. */
     async miVotacion(disp, sesion = SESION) { return (await e.cola(disp, sesion)).body.mi_votacion; },
-    /** Fija los dispositivos activos del establecimiento con dispositivos virtuales. */
-    activos: (n, est = ESTABLECIMIENTO) => conectividad.fijarVirtuales(est, n),
+    /** Fija los dispositivos activos de la sesión con dispositivos virtuales. */
+    activos: (n, sesion = SESION) => conectividad.fijarVirtuales(sesion, n),
     async cerrar() {
       await app.locals.e4.cerrar();
       srv.closeAllConnections?.();

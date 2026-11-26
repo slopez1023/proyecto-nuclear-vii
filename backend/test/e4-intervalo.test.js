@@ -46,6 +46,7 @@ const contadas = async (e, d, sesion) => (await e.miVotacion(d, sesion)).reprodu
 // ------------------------------------------------------------------ tabla B (intervalo 2)
 
 test('B1/B2/B3/B6/B7: la canción propia no cuenta; solo exitosas posteriores; se habilita y se reinicia', conEntorno(async (e) => {
+  e.activos(4); // rango 4–10 → intervalo 2
   await e.solicitar(A, cancion(1)); // A pide su canción (la más antigua: sonará primero)
   await llenar(e, 3);
   assert.deepEqual(await e.miVotacion(A), { puede_votar: false, intervalo_canciones: 2, reproducciones_contadas: 0, canciones_restantes: 2 }); // B2
@@ -81,6 +82,7 @@ test('B4a: una reproducción que terminó antes de la solicitud no suma', conEnt
 }));
 
 test('B4b/B4c/B5/A12: comenzó después y falla → no suma; las fallidas no habilitan', conEntorno(async (e) => {
+  e.activos(4); // rango 4–10 → intervalo 2
   await e.solicitar(A, cancion(1));
   await llenar(e, 3);
   await iniciar(e); // propia
@@ -172,7 +174,7 @@ test('C26 / H2: la canción solicitada por el dispositivo no le suma aunque suen
 
 // ------------------------------------------------------------------ rangos (B8, A11, C8, C9)
 
-for (const [activos, intervalo] of [[11, 4], [31, 6], [61, 8]]) {
+for (const [activos, intervalo] of [[1, 1], [3, 1], [4, 2], [10, 2], [11, 4], [30, 4], [31, 6], [60, 6], [61, 8], [100, 8]]) {
   test(`B8/A11: con ${activos} dispositivos activos hacen falta ${intervalo} reproducciones exitosas`, conEntorno(async (e) => {
     e.activos(activos);
     await e.solicitar(A, cancion(1));
@@ -192,8 +194,8 @@ for (const [activos, intervalo] of [[11, 4], [31, 6], [61, 8]]) {
   }));
 }
 
-test('A11: fronteras 10/11, 30/31 y 60/61 dispositivos activos', conEntorno(async (e) => {
-  const esperado = [[0, 2], [1, 2], [10, 2], [11, 4], [30, 4], [31, 6], [60, 6], [61, 8], [500, 8]];
+test('A11: fronteras 3/4, 10/11, 30/31 y 60/61 dispositivos activos', conEntorno(async (e) => {
+  const esperado = [[0, 1], [1, 1], [3, 1], [4, 2], [10, 2], [11, 4], [30, 4], [31, 6], [60, 6], [61, 8], [100, 8], [500, 8]];
   for (const [n, intervalo] of esperado) {
     e.activos(n);
     const estado = (await e.cola(A)).body;
@@ -228,6 +230,8 @@ test('C8/C9: el rango nuevo se aplica de inmediato y el contador no se reinicia'
 // ------------------------------------------------------------------ persistencia y establecimiento
 
 test('C10: el contador persiste entre sesiones del mismo establecimiento (y lo reproducido en otra sesión cuenta)', conEntorno(async (e) => {
+  e.activos(4); // rango 4–10 → intervalo 2
+  e.activos(4, 'SES-PRUEBA-005');
   await e.pool.query(`INSERT INTO sesion (id_sesion, id_establecimiento, qr_token, estado, qr_estado)
     VALUES ('SES-PRUEBA-005', 'EST-MOCK-001', 'prueba-005-token', 'activa', 'activo')`);
   await e.solicitar(A, cancion(1)); // en SES-MOCK-001

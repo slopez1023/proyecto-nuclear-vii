@@ -33,8 +33,9 @@ const iso = (ms) => (ms === null || ms === undefined ? null : new Date(ms).toISO
 
 // ---------------------------------------------------------------- reglas de votación
 
-/** Intervalo vigente según los dispositivos activos del establecimiento (decisión 1). */
+/** Intervalo vigente según los dispositivos activos (1–3: 1, 4–10: 2, 11–30: 4, 31–60: 6, >60: 8). */
 function intervaloPorActivos(activos) {
+  if (activos <= 3) return 1;
   if (activos <= 10) return 2;
   if (activos <= 30) return 4;
   if (activos <= 60) return 6;

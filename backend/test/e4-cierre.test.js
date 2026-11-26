@@ -81,12 +81,12 @@ test('H1: con dos dispositivos que solo se piden canciones entre sí, al quedar 
   await e.siguiente(); // termina la 2.ª y no queda nada
   const mvA = await e.miVotacion(A);
   const mvB = await e.miVotacion(B);
-  assert.deepEqual(mvA, { puede_votar: true, intervalo_canciones: 2, reproducciones_contadas: 1, canciones_restantes: 0 });
+  assert.deepEqual(mvA, { puede_votar: true, intervalo_canciones: 1, reproducciones_contadas: 1, canciones_restantes: 0 });
   assert.equal(mvB.puede_votar, true);
   const r = await e.solicitar(A, cancion(3));
   assert.equal(r.status, 201);
   // Tras pedir, el intervalo vuelve a aplicarse con normalidad.
-  assert.deepEqual(r.body.mi_votacion, { puede_votar: false, intervalo_canciones: 2, reproducciones_contadas: 0, canciones_restantes: 2 });
+  assert.deepEqual(r.body.mi_votacion, { puede_votar: false, intervalo_canciones: 1, reproducciones_contadas: 0, canciones_restantes: 1 });
 }));
 
 test('H1: la inactividad no se aplica con algo en espera ni con algo sonando (el intervalo protege a los demás)', conEntorno(async (e) => {
@@ -119,7 +119,7 @@ test('H1: los votos siguen siendo definitivos y se marca en el evento que se pid
 }));
 
 test('H1: un dispositivo que nunca votó sigue pudiendo votar (H4) y la elegibilidad de la vista pública no cambia', conEntorno(async (e) => {
-  assert.deepEqual(await e.miVotacion(C), { puede_votar: true, intervalo_canciones: 2, reproducciones_contadas: 0, canciones_restantes: 0 });
+  assert.deepEqual(await e.miVotacion(C), { puede_votar: true, intervalo_canciones: 1, reproducciones_contadas: 0, canciones_restantes: 0 });
   const publica = await e.pedir('GET', `/api/sesiones/${SESION}/cola`);
   assert.equal(publica.body.mi_votacion, undefined);
 }));

@@ -80,12 +80,24 @@ async function incrementarVersion(client, idSesion) {
   return rows[0].version_cola;
 }
 
-/** Cambio de rango de dispositivos activos: todas las sesiones del establecimiento cambian de versión. */
+/** Cambio de rango de dispositivos activos: solo la sesión activa con QR activo cambia de versión. */
+async function incrementarVersionSesionActiva(pool, idSesion) {
+  const { rows } = await pool.query(
+    `UPDATE sesion SET version_cola = version_cola + 1
+     WHERE id_sesion = $1 AND estado = 'activa' AND qr_estado = 'activo'
+     RETURNING version_cola`,
+    [idSesion],
+  );
+  return rows[0] ? rows[0].version_cola : null;
+}
+
+/** Cambio de rango por establecimiento (solo sesiones activas con QR activo). */
 async function incrementarVersionEstablecimiento(pool, idEstablecimiento) {
   return conTransaccion(pool, async (client) => {
     await client.query('SELECT 1 FROM establecimiento WHERE id_establecimiento = $1 FOR UPDATE', [idEstablecimiento]);
     const { rows } = await client.query(
-      `UPDATE sesion SET version_cola = version_cola + 1 WHERE id_establecimiento = $1
+      `UPDATE sesion SET version_cola = version_cola + 1
+       WHERE id_establecimiento = $1 AND estado = 'activa' AND qr_estado = 'activo'
        RETURNING id_sesion`,
       [idEstablecimiento],
     );
@@ -301,7 +313,7 @@ module.exports = {
   obtenerSesionPorToken,
   conTransaccion,
   upsertEstablecimiento, upsertSesion, obtenerSesion, bloquearEstablecimientoYSesion,
-  incrementarVersion, incrementarVersionEstablecimiento,
+  incrementarVersion, incrementarVersionSesionActiva, incrementarVersionEstablecimiento,
   asegurarDispositivo, registrarConexion, registrarDesconexion,
   obtenerCancion, guardarCancion, insertarCancionSemilla,
   leerColaPendiente, obtenerSolicitud, solicitudVivaDeCancion, existeVoto, insertarSolicitud, insertarVoto,

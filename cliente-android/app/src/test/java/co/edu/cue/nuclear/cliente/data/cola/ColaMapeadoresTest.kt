@@ -25,8 +25,8 @@ class ColaMapeadoresTest {
 
         assertEquals(5L, e.version)
         assertEquals(Instant.parse("2026-11-10T20:16:40.000Z"), e.generadoEn)
-        assertEquals(ReglasVotacion(dispositivosActivos = 2, intervaloCanciones = 2), e.reglasVotacion)
-        assertEquals(MiVotacion(puedeVotar = false, intervaloCanciones = 2, reproduccionesContadas = 0, cancionesRestantes = 2), e.miVotacion)
+        assertEquals(ReglasVotacion(dispositivosActivos = 2, intervaloCanciones = 1), e.reglasVotacion)
+        assertEquals(MiVotacion(puedeVotar = false, intervaloCanciones = 1, reproduccionesContadas = 0, cancionesRestantes = 1), e.miVotacion)
     }
 
     @Test
@@ -86,7 +86,7 @@ class ColaMapeadoresTest {
         val e = estado("estado_cola_publica")
 
         assertNull(e.miVotacion)
-        assertEquals(ReglasVotacion(2, 2), e.reglasVotacion) // las reglas vienen siempre
+        assertEquals(ReglasVotacion(2, 1), e.reglasVotacion) // las reglas vienen siempre
         assertTrue(e.cola.all { !it.yaVoto && !it.esMia })
     }
 

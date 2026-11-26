@@ -18,8 +18,8 @@ const { crearApp } = require('../src/app');
 const { cargarSesiones } = require('../src/sesiones');
 const { crearReloj, crearTemporizadores } = require('./helpers/e4');
 
-test('intervaloPorActivos: rangos 1–10, 11–30, 31–60, >60 y fronteras', () => {
-  const casos = [[0, 2], [1, 2], [10, 2], [11, 4], [30, 4], [31, 6], [60, 6], [61, 8], [1000, 8]];
+test('intervaloPorActivos: rangos 1–3, 4–10, 11–30, 31–60, >60 y fronteras', () => {
+  const casos = [[0, 1], [1, 1], [3, 1], [4, 2], [10, 2], [11, 4], [30, 4], [31, 6], [60, 6], [61, 8], [100, 8], [1000, 8]];
   for (const [n, intervalo] of casos) assert.equal(intervaloPorActivos(n), intervalo, `${n}`);
 });
 
@@ -101,18 +101,18 @@ test('conectividad: conexiones múltiples, gracia de 20 s, virtuales y aviso sol
   reloj.avanzar(1);
   assert.equal(con.contarActivos('E1'), 0);
   con.desconectar('E1', 'a'); // de más: no rompe
-  assert.deepEqual(avisos, []); // 0–1 activos: siempre intervalo 2
-  con.fijarVirtuales('E1', 10);
-  assert.deepEqual(avisos, []);
+  assert.deepEqual(avisos, []); // 0–1 activos: siempre intervalo 1
+  con.fijarVirtuales('E1', 10); // 10 → intervalo 2
+  assert.deepEqual(avisos, ['E1']);
   con.conectar('E1', 'c'); // 11 → intervalo 4
-  assert.deepEqual(avisos, ['E1']);
+  assert.deepEqual(avisos, ['E1', 'E1']);
   con.conectar('E1', 'd'); // 12: mismo rango, sin aviso
-  assert.deepEqual(avisos, ['E1']);
+  assert.deepEqual(avisos, ['E1', 'E1']);
   con.desconectar('E1', 'c');
   con.desconectar('E1', 'd');
   reloj.avanzar(20_001);
   await t.ejecutarPendientes(); // al vencer la gracia vuelve a 10 → intervalo 2
-  assert.deepEqual(avisos, ['E1', 'E1']);
+  assert.deepEqual(avisos, ['E1', 'E1', 'E1']);
 });
 
 test('eventos de servidor: sobre completo; tipo desconocido falla; registrar nunca lanza', () => {
@@ -158,7 +158,7 @@ test('youtube.buscar: avisa a los observadores con los videos crudos; un observa
 });
 
 test('crearApp sin db: las rutas del E4 no existen (comportamiento del E3 intacto)', async () => {
-  const app = crearApp({ sesiones: cargarSesiones(), youtube: { buscar: async () => [] }, almacenEventos: { guardar() {} } });
+  const app = crearApp({ sesiones: cargarSesiones(), youtube: { buscar: async () => [] }, almacenEventos: { guardar() { } } });
   assert.equal(app.locals.e4, undefined);
   const srv = app.listen(0);
   try {

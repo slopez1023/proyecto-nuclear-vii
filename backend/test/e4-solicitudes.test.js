@@ -31,7 +31,7 @@ test('A1/A2: solicitud aceptada con su voto automático (exactamente un voto)', 
   assert.equal(r.body.voto.id_solicitud, r.body.solicitud.id_solicitud);
   assert.match(r.body.solicitud.id_solicitud, /^SOL-\d+$/);
   assert.match(r.body.voto.id_voto, /^VOT-\d+$/);
-  assert.deepEqual(r.body.mi_votacion, { puede_votar: false, intervalo_canciones: 2, reproducciones_contadas: 0, canciones_restantes: 2 });
+  assert.deepEqual(r.body.mi_votacion, { puede_votar: false, intervalo_canciones: 1, reproducciones_contadas: 0, canciones_restantes: 1 });
   assert.equal(await contar(e, 'voto'), 1);
   const { rows } = await e.pool.query(`SELECT v.origen, d.identificador_seudonimo FROM voto v JOIN dispositivo d USING (id_dispositivo)`);
   assert.deepEqual(rows, [{ origen: 'solicitud', identificador_seudonimo: A }]);
@@ -46,7 +46,7 @@ test('A3/A4/A5/C18/C19: rechazo por intervalo → 409 sin solicitud; la cola y l
   assert.deepEqual(r.body, { error: {
     codigo: 'intervalo_no_cumplido',
     mensaje: 'Todavía no tienes otro voto disponible, por eso no puedes solicitar otra canción.',
-    detalle: { intervalo_canciones: 2, reproducciones_contadas: 0, canciones_restantes: 2 },
+    detalle: { intervalo_canciones: 1, reproducciones_contadas: 0, canciones_restantes: 1 },
   } });
   assert.deepEqual((await e.cola(null)).body.cola, colaAntes);
   assert.equal(await contar(e, 'solicitud'), sol);
@@ -121,7 +121,7 @@ test('C1: canción pendiente pedida por otro dispositivo → 200 voto_sumado, si
   assert.equal(r.body.solicitud.posicion, 1); // subió por votos
   assert.equal(r.body.solicitud.es_mia, false);
   assert.equal(r.body.voto.origen, 'solicitud'); // H3a
-  assert.equal(r.body.mi_votacion.canciones_restantes, 2); // el contador de B vuelve a 0
+  assert.equal(r.body.mi_votacion.canciones_restantes, 1); // el contador de B vuelve a 0
   assert.equal(await contar(e, 'solicitud'), 2);
 }));
 
@@ -184,7 +184,7 @@ test('P2: voto válido incrementa el total, reordena y reinicia el intervalo del
   assert.equal(r.body.solicitud.posicion, 1);
   assert.equal(r.body.solicitud.ya_voto, true);
   assert.equal(r.body.solicitud.es_mia, false);
-  assert.deepEqual(r.body.mi_votacion, { puede_votar: false, intervalo_canciones: 2, reproducciones_contadas: 0, canciones_restantes: 2 });
+  assert.deepEqual(r.body.mi_votacion, { puede_votar: false, intervalo_canciones: 1, reproducciones_contadas: 0, canciones_restantes: 1 });
   assert.equal((await e.votar(C, deB)).body.error.codigo, 'voto_duplicado');
 }));
 
@@ -260,7 +260,7 @@ test('GET /cola: vista pública sin X-Dispositivo-Id y vista personal con ella',
   assert.equal(personal.mi_votacion.puede_votar, false);
   const otro = (await e.cola(B)).body;
   assert.equal(otro.cola[0].ya_voto, false);
-  assert.deepEqual(otro.mi_votacion, { puede_votar: true, intervalo_canciones: 2, reproducciones_contadas: 0, canciones_restantes: 0 }); // H4
+  assert.deepEqual(otro.mi_votacion, { puede_votar: true, intervalo_canciones: 1, reproducciones_contadas: 0, canciones_restantes: 0 }); // H4
   assert.equal((await e.cola('no-es-uuid')).body.error.codigo, 'dispositivo_id_invalido');
   assert.equal((await e.cola(null, 'SES-MOCK-002')).status, 410);
   assert.equal((await e.cola(null, 'SES-NADA')).status, 404);
@@ -333,7 +333,7 @@ test('eventos: solicitud creada (2 eventos), voto sumado (1), rechazo (1), voto 
   assert.deepEqual(e.eventos.map((x) => x.tipo), ['solicitud_creada', 'voto_registrado']);
   const [creada, voto] = e.eventos;
   assert.deepEqual(creada.datos_evento, { id_solicitud: s, youtube_video_id: cancion(1), duracion_segundos: 200, posicion_inicial: 1, dispositivos_activos: 0, espera_estimada_segundos: 0 });
-  assert.deepEqual(voto.datos_evento, { id_solicitud: s, origen: 'solicitud', total_votos: 1, posicion_antes: null, posicion_despues: 1, intervalo_canciones: 2,
+  assert.deepEqual(voto.datos_evento, { id_solicitud: s, origen: 'solicitud', total_votos: 1, posicion_antes: null, posicion_despues: 1, intervalo_canciones: 1,
     sumado_a_existente: false, estado_solicitud: 'pendiente', por_inactividad: false });
   for (const ev of e.eventos) {
     assert.equal(ev.actor, 'servidor');
@@ -351,7 +351,7 @@ test('eventos: solicitud creada (2 eventos), voto sumado (1), rechazo (1), voto 
   e.eventos.length = 0;
   await e.solicitar(A, cancion(2));
   assert.deepEqual(e.eventos.map((x) => [x.tipo, x.datos_evento.motivo, x.datos_evento.canciones_restantes]),
-    [['solicitud_rechazada', 'intervalo_no_cumplido', 2]]);
+    [['solicitud_rechazada', 'intervalo_no_cumplido', 1]]);
   e.eventos.length = 0;
   await e.votar(A, s);
   assert.deepEqual(e.eventos.map((x) => [x.tipo, x.datos_evento.motivo]), [['voto_rechazado', 'voto_duplicado']]);

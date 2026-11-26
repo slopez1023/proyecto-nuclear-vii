@@ -157,7 +157,7 @@ class ColaRepositoryRealTest {
 
         val r = repositorio.solicitar(cancion)
 
-        assertEquals(ResultadoSolicitud.Rechazada(MotivoRechazoOperacion.INTERVALO_NO_CUMPLIDO, faltantes = 2), r)
+        assertEquals(ResultadoSolicitud.Rechazada(MotivoRechazoOperacion.INTERVALO_NO_CUMPLIDO, faltantes = 1), r)
     }
 
     @Test

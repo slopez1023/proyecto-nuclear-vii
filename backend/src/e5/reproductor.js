@@ -22,6 +22,9 @@ function crearReproductor({ pool, cola, flujo, ahora, emisor }) {
   const notificar = (idSesion) => {
     if (flujo && typeof flujo.notificarSesion === 'function') flujo.notificarSesion(idSesion);
   };
+  const notificarReproductor = (idSesion, estado) => {
+    if (flujo && typeof flujo.notificarEvento === 'function') flujo.notificarEvento(idSesion, 'reproductor', estado);
+  };
 
   async function verificarSesionDeEst(client, idEst, idSesion) {
     const s = await repo5.obtenerSesionCompleta(client, idSesion);
@@ -230,6 +233,7 @@ function crearReproductor({ pool, cola, flujo, ahora, emisor }) {
       await repo5.registrar(client, { idEst, idUsuario: usuario.id_usuario, accion: 'reproduccion_pausada', detalle: { id_sesion: idSesion }, ahora: t });
     });
     emisor.emitir({ tipo: 'reproduccion_pausada', sesion_id: idSesion, id_establecimiento: idEst, usuario, datos_evento: {} });
+    notificarReproductor(idSesion, { estado_reproduccion: 'pausada', pausada_en: iso(t) });
     return estadoActual(idEst, idSesion);
   }
 
@@ -244,6 +248,7 @@ function crearReproductor({ pool, cola, flujo, ahora, emisor }) {
       await repo5.registrar(client, { idEst, idUsuario: usuario.id_usuario, accion: 'reproduccion_reanudada', detalle: { id_sesion: idSesion }, ahora: t });
     });
     emisor.emitir({ tipo: 'reproduccion_reanudada', sesion_id: idSesion, id_establecimiento: idEst, usuario, datos_evento: {} });
+    notificarReproductor(idSesion, { estado_reproduccion: 'reproduciendo', pausada_en: null });
     return estadoActual(idEst, idSesion);
   }
 

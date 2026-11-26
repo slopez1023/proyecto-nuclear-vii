@@ -112,6 +112,17 @@ function crearFlujo({
   }
 
   /**
+   * Emite un evento SSE aditivo e independiente de la cola (p. ej. `reproductor` en pausa/reanudación)
+   * a las conexiones abiertas de `idSesion`, sin incrementar `version_cola`.
+   */
+  function notificarEvento(idSesion, nombreEvento, datos = {}) {
+    const lista = [...(conexiones.get(idSesion) || [])];
+    if (lista.length === 0) return;
+    const carga = JSON.stringify({ sesion_id: idSesion, ...datos });
+    for (const con of lista) escribir(con, `event: ${nombreEvento}\ndata: ${carga}\n\n`);
+  }
+
+  /**
    * Abre el flujo. La sesión y el UUID ya se validaron (errores como JSON normal antes de llegar aquí).
    * Solo las conexiones con X-Dispositivo-Id cuentan como dispositivo activo.
    */
@@ -127,7 +138,7 @@ function crearFlujo({
     if (!conexiones.has(con.idSesion)) conexiones.set(con.idSesion, new Set());
     conexiones.get(con.idSesion).add(con);
     if (uuid) {
-      conectividad.conectar(con.idEstablecimiento, uuid);
+      conectividad.conectar(con.idSesion, uuid);
       if (!apagado) registrar(repo.registrarConexion(pool, idDispositivo, con.idSesion, ahora()));
     }
     // Estado inicial inmediato (en la misma cola que los avisos, para respetar el orden de versiones).
@@ -144,7 +155,7 @@ function crearFlujo({
       }
       avisarConexiones();
       if (uuid) {
-        conectividad.desconectar(con.idEstablecimiento, uuid);
+        conectividad.desconectar(con.idSesion, uuid);
         if (!apagado) registrar(repo.registrarDesconexion(pool, idDispositivo, con.idSesion, ahora()));
       }
     };
@@ -188,7 +199,7 @@ function crearFlujo({
     return new Promise((resolve) => esperasConexiones.push({ n, resolve }));
   }
 
-  return { abrir, notificarSesion, notificarEstablecimiento, ping, verificarSesiones, cerrar, inactivo, totalConexiones, esperarConexiones };
+  return { abrir, notificarSesion, notificarEstablecimiento, notificarEvento, ping, verificarSesiones, cerrar, inactivo, totalConexiones, esperarConexiones };
 }
 
 module.exports = { crearFlujo, RETRY_MS };

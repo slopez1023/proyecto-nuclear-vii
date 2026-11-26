@@ -73,11 +73,19 @@ function montarRutasE4(app, { pool, youtube, almacenEventos, ahora = Date.now, c
     programarIntervalo: temporizadores.programarIntervalo, cancelarIntervalo: temporizadores.cancelarIntervalo,
   });
 
-  // Cambio de rango de dispositivos activos: nueva versión en las sesiones del establecimiento y reenvío.
-  con.alCambiarRango((idEst) => {
-    repo.incrementarVersionEstablecimiento(pool, idEst)
-      .then(() => flujo.notificarEstablecimiento(idEst))
+  // Cambio de rango de dispositivos activos en la sesión: nueva versión (solo si está activa) y reenvío.
+  con.alCambiarRango((idSesion) => {
+    repo.incrementarVersionSesionActiva(pool, idSesion)
+      .then((v) => { if (v !== null) return flujo.notificarSesion(idSesion); })
       .catch((err) => console.error('[conectividad] no se pudo avisar el cambio de rango:', err.message));
+  });
+
+  // Cambio de conteo neto en la sesión: evento SSE independiente para el panel DJ sin incrementar version_cola.
+  con.alCambiarConteo((idSesion, activos, intervalo) => {
+    flujo.notificarEvento(idSesion, 'conectividad', {
+      dispositivos_activos: activos,
+      intervalo_canciones: intervalo,
+    });
   });
 
   // ------------------------------------------------------------ cliente (Android y vista pública)
@@ -148,7 +156,18 @@ function montarRutasE4(app, { pool, youtube, almacenEventos, ahora = Date.now, c
       res.json(await simulacion.configurarAuto(req.params.idSesion, req.body));
     }));
     app.post('/api/simulacion/establecimientos/:idEstablecimiento/dispositivos-activos-virtuales', manejar(async (req, res) => {
-      res.json(simulacion.fijarVirtuales(req.params.idEstablecimiento, req.body));
+      const idEst = req.params.idEstablecimiento;
+      const sesionObjetivo = req.body && typeof req.body.id_sesion === 'string' ? req.body.id_sesion : null;
+      if (sesionObjetivo) {
+        return res.json(simulacion.fijarVirtuales(sesionObjetivo, req.body, { idEstablecimiento: idEst }));
+      }
+      const { rows } = await pool.query(
+        `SELECT id_sesion FROM sesion WHERE id_establecimiento = $1 AND estado = 'activa' AND qr_estado = 'activo'`,
+        [idEst],
+      );
+      let respuesta = simulacion.fijarVirtuales(idEst, req.body, { idEstablecimiento: idEst, soloValidar: true });
+      for (const r of rows) respuesta = simulacion.fijarVirtuales(r.id_sesion, req.body, { idEstablecimiento: idEst });
+      res.json(respuesta);
     }));
   }
 

@@ -127,13 +127,13 @@ function crearSimulacion({
   const inactiva = (idSesion) => colas.get(idSesion) || Promise.resolve();
 
   /** POST /api/simulacion/establecimientos/:idEstablecimiento/dispositivos-activos-virtuales */
-  function fijarVirtuales(idEstablecimiento, body) {
+  function fijarVirtuales(idSesion, body, { idEstablecimiento = idSesion, soloValidar = false } = {}) {
     const cantidad = validarCantidadVirtuales(body);
-    conectividad.fijarVirtuales(idEstablecimiento, cantidad);
+    if (!soloValidar) conectividad.fijarVirtuales(idSesion, cantidad);
     return {
       id_establecimiento: idEstablecimiento,
       cantidad,
-      dispositivos_activos: conectividad.contarActivos(idEstablecimiento),
+      dispositivos_activos: soloValidar ? cantidad : conectividad.contarActivos(idSesion),
     };
   }
 
