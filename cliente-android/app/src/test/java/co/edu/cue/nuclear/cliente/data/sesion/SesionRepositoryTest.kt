@@ -1,9 +1,11 @@
 package co.edu.cue.nuclear.cliente.data.sesion
 
 import co.edu.cue.nuclear.cliente.data.crearSesionApi
+import java.net.SocketTimeoutException
 import kotlinx.coroutines.test.runTest
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
+import retrofit2.Response
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Before
@@ -137,5 +139,67 @@ class SesionRepositoryTest {
     fun servidorCaido_esErrorDeConexion() = runTest {
         servidor.shutdown()
         assertEquals(ResultadoAcceso.ErrorConexion, repositorio.validar("token-valido-1"))
+    }
+
+    @Test
+    fun resolverCodigo_200_conservaCerosInicialesYDevuelveToken() = runTest {
+        responder(200, """{"qr_token":"ponga-token-01"}""")
+
+        val resultado = repositorio.resolverCodigo("004281", "uuid-disp-1")
+
+        assertEquals(ResultadoCodigo.Valido("ponga-token-01"), resultado)
+        val req = servidor.takeRequest()
+        assertEquals("POST", req.method)
+        assertEquals("/api/sesiones/acceso-codigo", req.path)
+        assertEquals("uuid-disp-1", req.getHeader("X-Dispositivo-Id"))
+        assertEquals("""{"codigo":"004281"}""", req.body.readUtf8())
+    }
+
+    @Test
+    fun resolverCodigo_incompleto_noLlamaAlServidor() = runTest {
+        assertEquals(ResultadoCodigo.NoDisponible, repositorio.resolverCodigo("0042"))
+        assertEquals(0, servidor.requestCount)
+    }
+
+    @Test
+    fun resolverCodigo_404_esNoDisponible() = runTest {
+        responder(404, """{"error":{"codigo":"codigo_no_disponible","mensaje":"No disponible"}}""")
+        assertEquals(ResultadoCodigo.NoDisponible, repositorio.resolverCodigo("004281"))
+    }
+
+    @Test
+    fun resolverCodigo_429_devuelveDemasiadosIntentosConRetryAfter() = runTest {
+        servidor.enqueue(
+            MockResponse()
+                .setResponseCode(429)
+                .setHeader("Retry-After", "45")
+                .setHeader("Content-Type", "application/json")
+                .setBody("""{"error":{"codigo":"demasiados_intentos","mensaje":"Espera","reintentar_en_s":45}}"""),
+        )
+        assertEquals(ResultadoCodigo.DemasiadosIntentos(45), repositorio.resolverCodigo("004281"))
+    }
+
+    @Test
+    fun resolverCodigo_500_esErrorServidor() = runTest {
+        responder(500, """{"error":{"codigo":"error_interno","mensaje":"Error"}}""")
+        assertEquals(ResultadoCodigo.ErrorServidor, repositorio.resolverCodigo("004281"))
+    }
+
+    @Test
+    fun resolverCodigo_servidorCaido_esErrorConexion() = runTest {
+        servidor.shutdown()
+        assertEquals(ResultadoCodigo.ErrorConexion, repositorio.resolverCodigo("004281"))
+    }
+
+    @Test
+    fun resolverCodigo_timeout_esTiempoAgotado() = runTest {
+        val apiTimeout = object : SesionApi {
+            override suspend fun obtener(token: String): Response<SesionDto> = kotlin.error("no usado")
+            override suspend fun resolverCodigo(peticion: CodigoAccesoPeticionDto, dispositivoId: String?): Response<CodigoAccesoRespuestaDto> {
+                throw SocketTimeoutException("timeout")
+            }
+        }
+        val repoTimeout = SesionRepository(apiTimeout)
+        assertEquals(ResultadoCodigo.TiempoAgotado, repoTimeout.resolverCodigo("004281"))
     }
 }
