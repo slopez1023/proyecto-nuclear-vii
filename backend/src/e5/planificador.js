@@ -9,9 +9,29 @@
 const repo5 = require('./repositorio-e5');
 const { evaluarHorario } = require('./horarios');
 
+const MAX_REINTENTOS = 2;
+const CODIGOS_TRANSITORIOS = new Set(['40001', '40P01', '57P01', '57P02', '57P03', 'ECONNRESET']);
+
+function esErrorTransitorio(err) {
+  return Boolean(err && (CODIGOS_TRANSITORIOS.has(err.code) || /deadlock|serialize|terminating connection/i.test(err.message || '')));
+}
+
 function crearPlanificador({ pool, sesionesAdmin, reproductor, bonus = null, ahora, intervaloMs = 15_000 }) {
   let ejecutando = false;
   let timer = null;
+
+  async function procesarEstablecimiento(cfg, t) {
+    const horarios = await repo5.leerHorarios(pool, cfg.id_establecimiento);
+    const excepciones = await repo5.leerExcepciones(pool, cfg.id_establecimiento);
+    const ev = evaluarHorario({ horarios, excepciones }, t, cfg.zona_horaria || 'America/Bogota');
+
+    // Siempre revisar primero si hay jornadas programadas activas que deban cerrarse
+    await sesionesAdmin.procesarCierreProgramado(cfg.id_establecimiento, ev);
+
+    if (ev.abierto) {
+      await sesionesAdmin.procesarAperturaProgramada(cfg.id_establecimiento, ev);
+    }
+  }
 
   async function ejecutarCiclo() {
     if (ejecutando) return;
@@ -20,29 +40,18 @@ function crearPlanificador({ pool, sesionesAdmin, reproductor, bonus = null, aho
       const t = ahora();
       const configs = await repo5.configsAutomaticas(pool);
       for (const cfg of configs) {
-        const sesion = await repo5.obtenerSesionCompleta(pool, cfg.id_sesion_principal);
-        if (!sesion) continue;
-        const horarios = await repo5.leerHorarios(pool, cfg.id_establecimiento);
-        const excepciones = await repo5.leerExcepciones(pool, cfg.id_establecimiento);
-        const ev = evaluarHorario({ horarios, excepciones }, t, cfg.zona_horaria || 'America/Bogota');
-
-        if (ev.abierto) {
-          const qrEsperado = cfg.pausa_manual ? 'inactivo' : 'activo';
-          const bloqueadaPerm = await repo5.estaQrDesactivado(pool, sesion.id_sesion);
-          if (!bloqueadaPerm) {
-            if (sesion.estado !== 'activa') {
-              await sesionesAdmin.activarSesion(cfg.id_establecimiento, sesion.id_sesion, null, { origen: 'horario', activarQr: !cfg.pausa_manual });
-            } else if (sesion.qr_estado !== qrEsperado) {
-              await sesionesAdmin.cambiarEstadoQr(cfg.id_establecimiento, sesion.id_sesion, !cfg.pausa_manual, null, { origen: 'horario' });
+        let intento = 0;
+        while (true) {
+          try {
+            await procesarEstablecimiento(cfg, t);
+            break;
+          } catch (err) {
+            if (esErrorTransitorio(err) && intento < MAX_REINTENTOS) {
+              intento++;
+              continue;
             }
-          }
-        } else {
-          // Fuera de horario: cierra la sesión principal y cualquier otra sesión activa del establecimiento
-          const sesionesEst = await repo5.listarSesiones(pool, cfg.id_establecimiento);
-          for (const s of sesionesEst) {
-            if (s.estado === 'activa' || s.qr_estado === 'activo') {
-              await sesionesAdmin.desactivarSesion(cfg.id_establecimiento, s.id_sesion, null, { origen: 'horario', limpiarCola: true });
-            }
+            console.error(`[e5/planificador] establecimiento ${cfg.id_establecimiento}:`, err.message);
+            break;
           }
         }
       }

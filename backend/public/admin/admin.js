@@ -203,7 +203,7 @@
     if (state.ytPlayer) {
       const iframe = typeof state.ytPlayer.getIframe === 'function' ? state.ytPlayer.getIframe() : null;
       if (!iframe || !document.body.contains(iframe)) {
-        try { state.ytPlayer.destroy(); } catch {}
+        try { state.ytPlayer.destroy(); } catch { }
         state.ytPlayer = null;
         state.ytVideoCargado = null;
       }
@@ -213,7 +213,7 @@
     const vid = actual && actual.cancion ? actual.cancion.youtube_video_id : null;
     if (!vid) {
       if (state.ytPlayer && typeof state.ytPlayer.stopVideo === 'function') {
-        try { state.ytPlayer.stopVideo(); } catch {}
+        try { state.ytPlayer.stopVideo(); } catch { }
       }
       state.ytVideoCargado = null;
       return;
@@ -221,8 +221,8 @@
     if (salidaExterna()) {
       // El audio sale por el equipo conectado al sistema de sonido del local (/sonido) o pantalla pública: el panel solo controla.
       if (state.ytPlayer) {
-        try { if (typeof state.ytPlayer.mute === 'function') state.ytPlayer.mute(); } catch {}
-        try { if (typeof state.ytPlayer.pauseVideo === 'function') state.ytPlayer.pauseVideo(); } catch {}
+        try { if (typeof state.ytPlayer.mute === 'function') state.ytPlayer.mute(); } catch { }
+        try { if (typeof state.ytPlayer.pauseVideo === 'function') state.ytPlayer.pauseVideo(); } catch { }
       }
       return;
     }
@@ -236,7 +236,7 @@
             aplicarVolumenPanel();
             const est = state.panel && state.panel.reproduccion && state.panel.reproduccion.estado_reproduccion;
             if (est === 'reproduciendo' && typeof ev.target.playVideo === 'function') {
-              try { ev.target.playVideo(); } catch {}
+              try { ev.target.playVideo(); } catch { }
             }
           },
           onStateChange(ev) {
@@ -266,7 +266,7 @@
 
   function cerrarFlujo() {
     if (state.sse) {
-      try { state.sse.close(); } catch {}
+      try { state.sse.close(); } catch { }
     }
     state.sse = null;
     state.sseSesionId = null;
@@ -324,7 +324,7 @@
           state.sonido = await api('GET', '/sonido');
           aplicarVolumenPanel();
           sincronizarYoutube();
-        } catch {}
+        } catch { }
       }, 4000);
     }
   }
@@ -366,7 +366,7 @@
           if (datos.version === state.sseVersion) return;
           state.sseVersion = datos.version;
         }
-      } catch {}
+      } catch { }
       refrescarEnVivo();
     });
 
@@ -377,7 +377,7 @@
         if (datos && datos.sesion_id && datos.sesion_id !== state.sesionId) return;
         const actual = state.panel && state.panel.reproduccion && state.panel.reproduccion.estado_reproduccion;
         if (datos && datos.estado_reproduccion && actual === datos.estado_reproduccion) return;
-      } catch {}
+      } catch { }
       refrescarEnVivo();
     });
 
@@ -391,7 +391,7 @@
           const pill = document.getElementById('pill-dispositivos');
           if (pill) pill.textContent = `Dispositivos activos: ${datos.dispositivos_activos}`;
         }
-      } catch {}
+      } catch { }
     });
 
     es.addEventListener('sesion_cerrada', () => {
@@ -415,7 +415,7 @@
         const sndSalida = document.getElementById('snd-salida');
         if (sndSalida && datos.salida) sndSalida.value = datos.salida;
         if (state.tab === 'reproduccion') refrescarDisplay();
-      } catch {}
+      } catch { }
     });
 
     es.addEventListener('display_estado', () => {
@@ -430,7 +430,7 @@
         const tit = datos.titulo || datos.youtube_video_id || 'la canción actual';
         const cod = datos.codigo_error || 'error';
         showToast(`Pantalla pública reportó ${cod} en "${tit}". Usa Saltar o Bloquear si corresponde.`, true);
-      } catch {}
+      } catch { }
     });
 
     es.addEventListener('error', () => {
@@ -505,7 +505,7 @@
         showToast(mensajeOk);
         return;
       }
-    } catch {}
+    } catch { }
     const ta = document.createElement('textarea');
     ta.value = texto;
     ta.style.cssText = 'position:fixed;left:-9999px;top:0';
@@ -523,7 +523,7 @@
       sincronizarClaimTemporal();
       programarVencimientoLease();
       if (state.tab === 'reproduccion') render();
-    } catch {}
+    } catch { }
   }
 
   async function cargarPanel() {
@@ -575,7 +575,7 @@
     if (state.usuario && state.tab === 'analitica') {
       if (!analiticaTimer) {
         analiticaTimer = setInterval(() => {
-          if (state.usuario && state.tab === 'analitica') cargarPanel().catch(() => {});
+          if (state.usuario && state.tab === 'analitica') cargarPanel().catch(() => { });
         }, 5000);
       }
     } else if (analiticaTimer) {
@@ -714,6 +714,9 @@
               <span class="pill ${sesionActual && sesionActual.qr_estado === 'activo' ? 'ok' : 'warn'}"><span class="dot"></span>QR ${esc(sesionActual ? sesionActual.qr_estado : 'inactivo')}</span>
               ${p.configuracion.pausa_manual ? '<span class="pill warn"><span class="dot"></span>Pausa manual</span>' : ''}
               <span id="pill-dispositivos" class="pill accent">Dispositivos activos: ${p.dispositivos_activos}</span>
+              ${p.dispositivos_estado && p.dispositivos_estado.inactivos_recientes > 0
+        ? `<span id="pill-inactivos" class="pill warn" title="Dispositivos con actividad reciente dentro de los últimos 30 min">Inactivos recientes: ${p.dispositivos_estado.inactivos_recientes}</span>`
+        : ''}
             </div>
           </div>
           <div id="tab-content"></div>
@@ -736,7 +739,7 @@
       limpiarTimersDisplay();
       cerrarFlujo();
       await api('POST', '/auth/logout');
-      if (state.ytPlayer && typeof state.ytPlayer.destroy === 'function') { try { state.ytPlayer.destroy(); } catch {} }
+      if (state.ytPlayer && typeof state.ytPlayer.destroy === 'function') { try { state.ytPlayer.destroy(); } catch { } }
       state.ytPlayer = null;
       state.ytVideoCargado = null;
       state.usuario = null;
@@ -758,9 +761,19 @@
     else if (state.tab === 'mantenimiento') renderMantenimiento(cont, sesionActual);
   }
 
+  const ETQ_JORNADA_PROG = {
+    abierta: { cls: 'ok', texto: 'Abierta (automática)' },
+    omitida_sesion_manual: { cls: 'warn', texto: 'Omitida por sesión manual activa' },
+    cerrada_auto: { cls: '', texto: 'Cerrada automáticamente' },
+    cerrada_manual: { cls: '', texto: 'Cerrada manualmente' },
+  };
+
   function renderResumen(cont, p, s, rep, esAdmin) {
     const ev = p.horario.evaluacion_actual;
     const actual = rep && rep.actual;
+    const dev = p.dispositivos_estado || { activos: p.dispositivos_activos || 0, inactivos_recientes: 0, desconectados: 0 };
+    const jp = p.jornada_programada;
+    const jpEtq = jp ? (ETQ_JORNADA_PROG[jp.estado] || { cls: '', texto: jp.estado }) : null;
     cont.innerHTML = `
       <div class="grid-4">
         <div class="card"><div class="muted">Estado de sesión</div><div class="stat-val">${esc(s ? s.estado : '—')}</div></div>
@@ -794,6 +807,8 @@
           <p class="muted">Modo automático por horario: <strong>${p.configuracion.modo_automatico ? 'Activado' : 'Manual'}</strong></p>
           <p class="muted">Lista predeterminada: <strong>${esc((p.listas.listas.find((l) => l.es_predeterminada) || {}).nombre || 'Sin asignar')}</strong></p>
           <p class="muted">Cola en espera: <strong>${rep ? rep.cola.length : 0}</strong> canciones solicitadas</p>
+          <p class="muted">Dispositivos: <strong>${dev.activos}</strong> activos · <strong>${dev.inactivos_recientes}</strong> inactivos recientes · <strong>${dev.desconectados}</strong> desconectados</p>
+          ${jp ? `<p class="muted">Última jornada (${esc(jp.fecha_jornada)}): <span class="pill ${jpEtq.cls}">${esc(jpEtq.texto)}</span>${jp.id_sesion ? ` · <strong>${esc(jp.id_sesion)}</strong>` : ''}${jp.codigo_acceso ? ` · Código <strong>${esc(jp.codigo_acceso)}</strong>` : ''}</p>` : ''}
         </div>
       </div>`;
 
@@ -881,7 +896,7 @@
           <div class="display-subcard">
             <h3 style="margin:0">Enlace de visualización</h3>
             ${cerrada ? '<p class="muted">La sesión está cerrada. Activa una nueva sesión en <strong>Sesiones y QR</strong> para habilitar una pantalla pública.</p>' : (
-              d.existe ? `
+        d.existe ? `
                 <div class="display-url-row">
                   <input id="disp-url" type="text" readonly value="${esc(urlCompleta)}" aria-label="Enlace público del televisor">
                   <button class="btn sm" id="btn-disp-copiar" type="button">Copiar enlace</button>
@@ -893,13 +908,13 @@
                 </div>
               ` : `
                 <p class="muted">${d.estado_pantalla === 'pantalla_revocada'
-                  ? 'El enlace anterior fue revocado y dejó de responder. Crea uno nuevo cuando lo necesites.'
-                  : 'Aún no has creado un enlace público para esta sesión.'}</p>
+          ? 'El enlace anterior fue revocado y dejó de responder. Crea uno nuevo cuando lo necesites.'
+          : 'Aún no has creado un enlace público para esta sesión.'}</p>
                 <div class="row">
                   <button class="btn primary" id="btn-disp-crear" type="button">${d.estado_pantalla === 'pantalla_revocada' ? 'Crear nuevo enlace' : 'Crear pantalla pública'}</button>
                 </div>
               `
-            )}
+      )}
           </div>
 
           <div class="display-subcard">
@@ -1039,10 +1054,10 @@
             </div>` : '<p class="muted mt">Sin canción sonando. Pulsa Iniciar para reproducir la cola o la lista predeterminada.</p>'}
           <div class="row mt">
             ${rep.estado_reproduccion === 'reproduciendo'
-              ? '<button class="btn primary" id="rep-toggle" data-acc="pausar" title="Pausar">⏸ Pausar</button>'
-              : (rep.estado_reproduccion === 'pausada'
-                ? '<button class="btn success" id="rep-toggle" data-acc="reanudar" title="Reanudar">▶ Reanudar</button>'
-                : '<button class="btn primary" id="rep-toggle" data-acc="iniciar" title="Iniciar">▶ Iniciar</button>')}
+        ? '<button class="btn primary" id="rep-toggle" data-acc="pausar" title="Pausar">⏸ Pausar</button>'
+        : (rep.estado_reproduccion === 'pausada'
+          ? '<button class="btn success" id="rep-toggle" data-acc="reanudar" title="Reanudar">▶ Reanudar</button>'
+          : '<button class="btn primary" id="rep-toggle" data-acc="iniciar" title="Iniciar">▶ Iniciar</button>')}
             <button class="btn warn" id="rep-saltar" title="Saltar a la siguiente" ${actual ? '' : 'disabled'}>⏭ Saltar</button>
             <button class="btn danger" id="rep-error" title="Reportar fallo de reproducción" ${actual ? '' : 'disabled'}>⚠ Reportar error</button>
           </div>
@@ -1218,8 +1233,8 @@
           </div>
           <div class="row mt" style="align-items:flex-start">
             ${s.estado === 'activa' || !s.desactivado_permanente
-              ? `<img class="qr-preview" src="/api/admin/sesiones/${encodeURIComponent(s.id_sesion)}/qr.png" alt="QR ${esc(s.id_sesion)}">`
-              : ''}
+        ? `<img class="qr-preview" src="/api/admin/sesiones/${encodeURIComponent(s.id_sesion)}/qr.png" alt="QR ${esc(s.id_sesion)}">`
+        : ''}
             <div style="flex:1;min-width:210px">
               <div class="muted">Sesión: <code>${esc(s.id_sesion)}</code></div>
               <div class="mt-sm">
@@ -1229,12 +1244,12 @@
               <p class="muted mt-sm">URL para app móvil:<br><code>${esc(s.qr_url)}</code></p>
               <div class="row mt-sm">
                 ${s.codigo_acceso
-                  ? `<button class="btn sm" type="button" data-copiar-codigo="${esc(s.codigo_acceso)}">Copiar código</button>`
-                  : ''}
+        ? `<button class="btn sm" type="button" data-copiar-codigo="${esc(s.codigo_acceso)}">Copiar código</button>`
+        : ''}
                 <button class="btn sm" type="button" data-copiar-qr="${esc(s.qr_url)}">Copiar enlace QR</button>
                 ${!s.desactivado_permanente
-                  ? `<button class="btn sm" type="button" data-imprimir-acceso="${esc(s.id_sesion)}">Imprimir tarjeta</button>`
-                  : ''}
+        ? `<button class="btn sm" type="button" data-imprimir-acceso="${esc(s.id_sesion)}">Imprimir tarjeta</button>`
+        : ''}
               </div>
             </div>
           </div>
@@ -1243,15 +1258,15 @@
           <p class="muted" style="margin:0">Pendientes en cola: <strong>${s.pendientes}</strong> · Históricas: <strong>${s.solicitudes_historicas}</strong></p>
           <div class="row">
             ${s.estado === 'activa'
-              ? `
+        ? `
                 <button class="btn sm danger" data-des="${esc(s.id_sesion)}">Cerrar sesión</button>
                 ${!s.desactivado_permanente && s.qr_estado === 'activo'
-                  ? `<button class="btn sm" data-qr="${esc(s.id_sesion)}" data-qract="0">Desactivar QR</button>`
-                  : '<span class="pill warn">QR desactivado (no reutilizable)</span>'}
+          ? `<button class="btn sm" data-qr="${esc(s.id_sesion)}" data-qract="0">Desactivar QR</button>`
+          : '<span class="pill warn">QR desactivado (no reutilizable)</span>'}
               `
-              : (s.desactivado_permanente
-                ? '<span class="pill err">Cerrada permanentemente</span>'
-                : `<button class="btn sm success" data-act="${esc(s.id_sesion)}">Activar sesión y QR</button>`)}
+        : (s.desactivado_permanente
+          ? '<span class="pill err">Cerrada permanentemente</span>'
+          : `<button class="btn sm success" data-act="${esc(s.id_sesion)}">Activar sesión y QR</button>`)}
           </div>
         </div>
       </div>`;
@@ -1354,6 +1369,8 @@
   function renderHorarios(cont, p) {
     const mapH = new Map(p.horario.horarios.map((h) => [h.dia_semana, h]));
     const sesionesDisponibles = p.sesiones.filter((s) => s.estado === 'activa' || !s.desactivado_permanente);
+    const jp = p.jornada_programada;
+    const jpEtq = jp ? (ETQ_JORNADA_PROG[jp.estado] || { cls: '', texto: jp.estado }) : null;
     cont.innerHTML = `
       <div class="grid-2">
         <div class="card">
@@ -1363,15 +1380,27 @@
           </div>
           <div class="row mt">
             <div style="flex:1">
-              <label for="cfg-ses">Sesión principal</label>
+              <label for="cfg-ses">Sesión principal (opcional: se crea automática al abrir)</label>
               ${sesionesDisponibles.length ? `
-                <select id="cfg-ses">${sesionesDisponibles.map((s) => `<option value="${esc(s.id_sesion)}" ${s.id_sesion === p.configuracion.id_sesion_principal ? 'selected' : ''}>${esc(s.id_sesion)} (${esc(s.estado)})</option>`).join('')}</select>` : `
-                <select id="cfg-ses" disabled><option value="">Sin sesión activa</option></select>`}
+                <select id="cfg-ses"><option value="">Creación automática al abrir</option>${sesionesDisponibles.map((s) => `<option value="${esc(s.id_sesion)}" ${s.id_sesion === p.configuracion.id_sesion_principal ? 'selected' : ''}>${esc(s.id_sesion)} (${esc(s.estado)})</option>`).join('')}</select>` : `
+                <select id="cfg-ses"><option value="">Creación automática al abrir</option></select>`}
             </div>
             <button id="btn-auto" class="btn ${p.configuracion.modo_automatico ? 'warn' : 'primary'}">
               ${p.configuracion.modo_automatico ? 'Desactivar modo automático' : 'Activar modo automático'}
             </button>
           </div>
+          ${jp ? `
+            <div class="mt" style="padding:10px 12px;border-radius:10px;background:var(--surface2);border:1px solid var(--line)">
+              <div class="between">
+                <span class="muted">Jornada programada (${esc(jp.fecha_jornada)})</span>
+                <span class="pill ${jpEtq.cls}">${esc(jpEtq.texto)}</span>
+              </div>
+              <div class="muted" style="margin-top:6px;font-size:.86rem">
+                ${jp.id_sesion ? `Sesión: <strong>${esc(jp.id_sesion)}</strong>` : 'Sin sesión automática creada'}
+                ${jp.codigo_acceso ? ` · Código 6 dígitos: <strong>${esc(jp.codigo_acceso)}</strong>` : ''}
+                ${jp.motivo_estado ? ` · ${esc(jp.motivo_estado)}` : ''}
+              </div>
+            </div>` : ''}
           <div class="row mt">
             <input id="pausa-motivo" style="flex:1" placeholder="Motivo de pausa manual (opcional)" value="${esc(p.configuracion.pausa_motivo || '')}">
             <button id="btn-pausa" class="btn ${p.configuracion.pausa_manual ? 'success' : 'warn'}">
@@ -1385,8 +1414,8 @@
           <form id="f-exc" class="row">
             <input id="ex-fecha" type="date" required style="flex:1">
             <select id="ex-cerrado" style="width:130px"><option value="1">Cerrado</option><option value="0">Horario especial</option></select>
-            <input id="ex-ap" value="18:00" style="width:95px" placeholder="HH:MM">
-            <input id="ex-ci" value="02:00" style="width:95px" placeholder="HH:MM">
+            <input id="ex-ap" type="time" value="18:00" style="width:140px">
+            <input id="ex-ci" type="time" value="02:00" style="width:140px">
             <input id="ex-mot" placeholder="Motivo" style="flex:1">
             <button class="btn primary" type="submit">Guardar</button>
           </form>
@@ -1409,14 +1438,14 @@
           <thead><tr><th>Día</th><th>Activo</th><th>Apertura</th><th>Cierre</th></tr></thead>
           <tbody>
             ${DIAS.map((nombre, d) => {
-              const h = mapH.get(d) || { activo: d >= 4, apertura: '18:00', cierre: '02:00' };
-              return `<tr>
+      const h = mapH.get(d) || { activo: d >= 4, apertura: '18:00', cierre: '02:00' };
+      return `<tr>
                 <td>${nombre}</td>
                 <td><input type="checkbox" data-dia="${d}" class="h-act" ${h.activo ? 'checked' : ''} style="width:20px;height:20px"></td>
                 <td><input type="time" data-dia="${d}" class="h-ap" value="${esc(h.apertura)}"></td>
                 <td><input type="time" data-dia="${d}" class="h-ci" value="${esc(h.cierre)}"></td>
               </tr>`;
-            }).join('')}
+    }).join('')}
           </tbody>
         </table>
       </form>`;
@@ -1431,10 +1460,6 @@
     });
     document.getElementById('btn-auto').addEventListener('click', async () => {
       const idSel = document.getElementById('cfg-ses').value || null;
-      if (!p.configuracion.modo_automatico && !idSel) {
-        showToast('Crea y activa una sesión primero', true);
-        return;
-      }
       try {
         const body = { modo_automatico: !p.configuracion.modo_automatico };
         if (idSel) body.id_sesion_principal = idSel;
@@ -1763,15 +1788,15 @@
               </div>
               <div class="chart-bars" style="flex:1">
                 ${pop.map((c) => {
-                  const v = c.total_votos || c.total_solicitudes || 0;
-                  const h = Math.max(12, Math.round((v / maxVotos) * 125));
-                  return `
+      const v = c.total_votos || c.total_solicitudes || 0;
+      const h = Math.max(12, Math.round((v / maxVotos) * 125));
+      return `
                     <div class="chart-col" title="${esc(c.titulo)}: ${v} votos (${c.total_solicitudes} solicitudes)">
                       <span class="chart-val">${v}</span>
                       <div class="chart-bar" style="height:${h}px"></div>
                       <span class="chart-lbl">${esc(c.titulo)}</span>
                     </div>`;
-                }).join('')}
+    }).join('')}
               </div>
             </div>
             <div class="chart-legend">
@@ -1809,13 +1834,13 @@
                 <polygon fill="url(#an-grad)" points="${puntosSvg} 460,145 44,145" />
                 <polyline fill="none" stroke="var(--accent-strong)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" points="${puntosSvg}" />
                 ${temp.map((t, i) => {
-                  const x = temp.length > 1 ? 44 + (i * 416) / (temp.length - 1) : 252;
-                  const y = 142 - (t.eventos / maxEv) * 114;
-                  return `
+      const x = temp.length > 1 ? 44 + (i * 416) / (temp.length - 1) : 252;
+      const y = 142 - (t.eventos / maxEv) * 114;
+      return `
                     <circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4.5" fill="var(--accent-strong)" />
                     <text x="${x.toFixed(1)}" y="${Math.max(14, y - 9).toFixed(1)}" text-anchor="middle" fill="var(--text)" font-size="11" font-weight="700">${t.eventos}</text>
                     <text x="${x.toFixed(1)}" y="164" text-anchor="middle" fill="var(--muted)" font-size="10">${esc(t.hora)}</text>`;
-                }).join('')}
+    }).join('')}
               </svg>
             </div>` : '<p class="muted mt">Aún no hay participación de clientes registrada en este periodo.</p>'}
         </div>

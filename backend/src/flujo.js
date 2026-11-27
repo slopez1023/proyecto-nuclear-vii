@@ -170,7 +170,7 @@ function crearFlujo({
     if (!conexiones.has(con.idSesion)) conexiones.set(con.idSesion, new Set());
     conexiones.get(con.idSesion).add(con);
     if (uuid) {
-      conectividad.conectar(con.idSesion, uuid);
+      conectividad.conectar(con.idSesion, uuid, idDispositivo);
       if (!apagado) registrar(repo.registrarConexion(pool, idDispositivo, con.idSesion, ahora()));
     }
     // Estado inicial inmediato (en la misma cola que los avisos, para respetar el orden de versiones).
@@ -205,7 +205,20 @@ function crearFlujo({
 
   /** Comentario `: ping` a todas las conexiones (mantiene viva la conexión en proxies). */
   function ping() {
-    for (const set of conexiones.values()) for (const con of set) escribir(con, ': ping\n\n');
+    const t = ahora();
+    const vistos = new Set();
+    for (const set of conexiones.values()) {
+      for (const con of set) {
+        escribir(con, ': ping\n\n');
+        if (con.uuid && con.idDispositivo && !apagado) {
+          const clave = `${con.idDispositivo}:${con.idSesion}`;
+          if (!vistos.has(clave)) {
+            vistos.add(clave);
+            registrar(repo.registrarActividadDispositivo(pool, con.idDispositivo, con.idSesion, t));
+          }
+        }
+      }
+    }
     return verificarSesiones(); // cada ping aprovecha para detectar sesiones cerradas
   }
   const temporizador = programarIntervalo(() => { ping(); }, pingMs);
