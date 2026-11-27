@@ -12,6 +12,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -24,8 +25,19 @@ import co.edu.cue.nuclear.cliente.ui.theme.NuclearTheme
 
 class MainActivity : ComponentActivity() {
 
-    /** Token del último enlace https://HOST/s/TOKEN recibido (App Link). */
+    /** Token del último enlace https://HOST/s/TOKEN recibido (App Link, escáner interno o código manual). */
     private var tokenQr by mutableStateOf<String?>(null)
+    private var generacionEntrada by mutableIntStateOf(0)
+
+    private fun ingresarConToken(token: String) {
+        tokenQr = token
+        generacionEntrada++
+    }
+
+    private fun reiniciarAcceso() {
+        tokenQr = null
+        generacionEntrada++
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -39,11 +51,14 @@ class MainActivity : ComponentActivity() {
                     // sistema; el contenido sí respeta las zonas seguras con safeDrawingPadding().
                     Box(Modifier.fillMaxSize().fondoNuclear()) {
                         CompositionLocalProvider(LocalFondoGlobal provides true) {
-                            // Un enlace nuevo reinicia el flujo de acceso con el token nuevo.
-                            key(tokenQr) {
+                            // Cada entrada nueva (App Link, escáner QR o código manual) reinicia el flujo.
+                            key(tokenQr, generacionEntrada) {
                                 NuclearNavHost(
                                     token = tokenQr,
+                                    generacionEntrada = generacionEntrada,
                                     contenedor = contenedor,
+                                    onTokenObtenido = ::ingresarConToken,
+                                    onReiniciarAcceso = ::reiniciarAcceso,
                                     modifier = Modifier.safeDrawingPadding(),
                                 )
                             }
@@ -56,7 +71,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        tokenDesde(intent)?.let { tokenQr = it }
+        tokenDesde(intent)?.let(::ingresarConToken)
     }
 
     private fun tokenDesde(intent: Intent?): String? =
