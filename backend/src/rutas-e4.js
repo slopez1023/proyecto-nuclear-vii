@@ -106,6 +106,14 @@ function montarRutasE4(app, { pool, youtube, almacenEventos, ahora = Date.now, c
     flujo.abrir(req, res, { sesion, uuid, idDispositivo });
   }));
 
+  // C2b. Latido explícito de dispositivo (actualiza ultima_actividad sin duplicar registro)
+  app.post('/api/sesiones/:idSesion/latido', manejar(async (req, res) => {
+    const uuid = leerDispositivo(req, { obligatorio: true });
+    const sesion = await cola.obtenerSesionActiva(req.params.idSesion);
+    const idDispositivo = await cola.registrarDispositivo(uuid, sesion.id_sesion);
+    res.json({ ok: true, id_dispositivo: idDispositivo, sesion_id: sesion.id_sesion, timestamp: ahora() });
+  }));
+
   // C3. Solicitar una canción (P1: voto automático)
   app.post('/api/sesiones/:idSesion/solicitudes', manejar(async (req, res) => {
     const uuid = leerDispositivo(req, { obligatorio: true });

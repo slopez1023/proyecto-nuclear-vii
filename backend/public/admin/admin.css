@@ -319,6 +319,39 @@ textarea:focus {
   border-color: transparent;
 }
 
+/* Selector nativo de fecha y hora en modo oscuro */
+input[type="date"],
+input[type="time"],
+input[type="datetime-local"] {
+  color-scheme: dark;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator,
+input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  opacity: 0.88;
+  cursor: pointer;
+  border-radius: 6px;
+  padding: 2px;
+  transition: opacity .15s ease;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator:hover,
+input[type="time"]::-webkit-calendar-picker-indicator:hover,
+input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover,
+input[type="date"]:focus::-webkit-calendar-picker-indicator,
+input[type="time"]:focus::-webkit-calendar-picker-indicator,
+input[type="datetime-local"]:focus::-webkit-calendar-picker-indicator {
+  opacity: 1;
+}
+
+input[type="date"]:disabled::-webkit-calendar-picker-indicator,
+input[type="time"]:disabled::-webkit-calendar-picker-indicator,
+input[type="datetime-local"]:disabled::-webkit-calendar-picker-indicator {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
 .btn {
   display: inline-flex;
   align-items: center;

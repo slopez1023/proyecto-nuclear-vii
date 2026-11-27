@@ -5,10 +5,12 @@
  * `req.usuario.id_establecimiento` (un establecimiento nunca accede a datos de otro).
  */
 const express = require('express');
+const repo4 = require('../db/repositorio');
 const repo5 = require('./repositorio-e5');
 const analitica = require('./analitica');
 const { generarPdfRespaldo } = require('./pdf-respaldo');
 const { ErrorApi, manejar, iso } = require('./comun-e5');
+const { resolverVentanaInactivoMs } = require('../comun-e4');
 
 const idEntero = (valor, nombre) => {
   const n = Number(valor);
@@ -16,7 +18,26 @@ const idEntero = (valor, nombre) => {
   return n;
 };
 
-function crearRouterE5({ pool, youtube, auth, sesionesAdmin, bloqueos, listas, reproductor, bonus, display, flujo, conectividad, ahora }) {
+function formatearJornadaProgramada(jp) {
+  if (!jp) return null;
+  return {
+    fecha_jornada: jp.fecha_jornada,
+    id_sesion: jp.id_sesion || null,
+    estado: jp.estado,
+    motivo_estado: jp.motivo || null,
+    apertura_programada_en: jp.apertura_programada_en != null ? iso(Number(jp.apertura_programada_en)) : null,
+    cierre_programado_en: jp.cierre_programado_en != null ? iso(Number(jp.cierre_programado_en)) : null,
+    sesion_estado: jp.sesion_estado || null,
+    qr_token: jp.qr_token || null,
+    qr_desactivado: Boolean(jp.e5_qr_desactivado),
+    codigo_acceso: jp.codigo_vigente ? jp.codigo_acceso : null,
+  };
+}
+
+function crearRouterE5({
+  pool, youtube, auth, sesionesAdmin, bloqueos, listas, reproductor, bonus, display,
+  flujo, conectividad, ahora, ventanaInactivoRecienteMs = resolverVentanaInactivoMs(),
+}) {
   const router = express.Router();
   const soloAdmin = auth.exigirRol('admin');
   const operador = auth.exigirRol('admin', 'dj');
@@ -59,6 +80,24 @@ function crearRouterE5({ pool, youtube, auth, sesionesAdmin, bloqueos, listas, r
       || null;
     const rep = sesionObj ? await reproductor.estadoActual(idEst, sesionObj.id_sesion) : null;
     const activos = conectividad && sesionObj ? conectividad.contarActivos(sesionObj.id_sesion) : 0;
+    const listaActivos = conectividad && sesionObj && typeof conectividad.listarActivos === 'function'
+      ? conectividad.listarActivos(sesionObj.id_sesion)
+      : { idsDispositivos: [] };
+    const dispositivosEstado = sesionObj
+      ? await repo4.resumenDispositivosSesion(pool, sesionObj.id_sesion, {
+        idsActivos: listaActivos.idsDispositivos,
+        ahoraMs: ahora(),
+        ventanaInactivoMs: ventanaInactivoRecienteMs,
+      })
+      : {
+        activos: 0,
+        inactivos_recientes: 0,
+        desconectados: 0,
+        total_registrados: 0,
+        ventana_inactivo_ms: ventanaInactivoRecienteMs,
+        dispositivos: [],
+      };
+    const jornadaProgramada = formatearJornadaProgramada(await repo5.ultimaJornadaProgramadaEstablecimiento(pool, idEst));
 
     res.json({
       establecimiento: est,
@@ -72,6 +111,8 @@ function crearRouterE5({ pool, youtube, auth, sesionesAdmin, bloqueos, listas, r
         rotacion_listas: cfg.rotacion_listas,
       },
       dispositivos_activos: activos,
+      dispositivos_estado: dispositivosEstado,
+      jornada_programada: jornadaProgramada,
       sesiones,
       horario,
       reproduccion: rep,
@@ -107,11 +148,13 @@ function crearRouterE5({ pool, youtube, auth, sesionesAdmin, bloqueos, listas, r
   router.get('/horarios', operador, manejar(async (req, res) => {
     const idEst = req.usuario.id_establecimiento;
     const cfg = await sesionesAdmin.asegurarEstablecimiento(idEst);
+    const jornadaProgramada = formatearJornadaProgramada(await repo5.ultimaJornadaProgramadaEstablecimiento(pool, idEst));
     res.json({
       zona_horaria: cfg.zona_horaria,
       modo_automatico: cfg.modo_automatico,
       pausa_manual: cfg.pausa_manual,
       pausa_motivo: cfg.pausa_motivo,
+      jornada_programada: jornadaProgramada,
       ...(await sesionesAdmin.resumenHorario(pool, idEst, cfg)),
     });
   }));

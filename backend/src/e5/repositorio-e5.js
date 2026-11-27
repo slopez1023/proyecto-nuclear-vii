@@ -99,7 +99,7 @@ async function actualizarConfig(q, idEst, cambios, ahora) {
 async function configsAutomaticas(q) {
   const { rows } = await q.query(
     `SELECT id_establecimiento, id_sesion_principal, modo_automatico, pausa_manual, zona_horaria
-     FROM e5_config_establecimiento WHERE modo_automatico AND id_sesion_principal IS NOT NULL`,
+     FROM e5_config_establecimiento WHERE modo_automatico`,
   );
   return rows;
 }
@@ -194,11 +194,106 @@ async function abrirJornada(q, idSesion, origen, ahora) {
   return rows[0] ? rows[0].id_jornada : null;
 }
 
-async function cerrarJornada(q, idSesion, origen, ahora, retiradas) {
+async function cerrarJornada(q, idSesion, origen, ahora, retiradas, motivo = null) {
   await q.query(
-    `UPDATE e5_jornada SET cerrada_en = $2, origen_cierre = $3, solicitudes_retiradas = $4
+    `UPDATE e5_jornada SET cerrada_en = $2, origen_cierre = $3, solicitudes_retiradas = $4,
+       motivo_cierre = COALESCE($5, motivo_cierre)
      WHERE id_sesion = $1 AND cerrada_en IS NULL`,
-    [idSesion, ahora, origen, retiradas],
+    [idSesion, ahora, origen, retiradas, motivo],
+  );
+}
+
+async function obtenerJornadaProgramada(q, idEstablecimiento, fechaJornada) {
+  const { rows } = await q.query(
+    `SELECT id_establecimiento, fecha_jornada, id_sesion, estado,
+            apertura_programada_en, cierre_programado_en,
+            creada_en, cerrada_en, motivo
+     FROM e5_jornada_programada
+     WHERE id_establecimiento = $1 AND fecha_jornada = $2`,
+    [idEstablecimiento, fechaJornada],
+  );
+  return rows[0] || null;
+}
+
+async function ultimaJornadaProgramadaEstablecimiento(q, idEstablecimiento) {
+  const { rows } = await q.query(
+    `SELECT jp.id_establecimiento, jp.fecha_jornada, jp.id_sesion, jp.estado,
+            jp.apertura_programada_en, jp.cierre_programado_en,
+            jp.creada_en, jp.cerrada_en, jp.motivo,
+            s.estado AS sesion_estado,
+            s.qr_token, (qd.id_sesion IS NOT NULL) AS e5_qr_desactivado,
+            ca.codigo AS codigo_acceso, ca.vigente AS codigo_vigente
+     FROM e5_jornada_programada jp
+     LEFT JOIN sesion s ON s.id_sesion = jp.id_sesion
+     LEFT JOIN e5_qr_desactivado qd ON qd.id_sesion = jp.id_sesion
+     LEFT JOIN e5_codigo_acceso ca ON ca.id_sesion = jp.id_sesion AND ca.vigente = TRUE
+     WHERE jp.id_establecimiento = $1
+     ORDER BY jp.fecha_jornada DESC, jp.creada_en DESC
+     LIMIT 1`,
+    [idEstablecimiento],
+  );
+  return rows[0] || null;
+}
+
+async function jornadasProgramadasPorCerrar(q, idEstablecimiento) {
+  const { rows } = await q.query(
+    `SELECT jp.id_establecimiento, jp.fecha_jornada, jp.id_sesion, jp.estado,
+            jp.apertura_programada_en, jp.cierre_programado_en,
+            s.estado AS sesion_estado
+     FROM e5_jornada_programada jp
+     JOIN sesion s ON s.id_sesion = jp.id_sesion
+     WHERE jp.id_establecimiento = $1
+       AND jp.estado = 'abierta'
+       AND jp.id_sesion IS NOT NULL
+       AND s.estado = 'activa'
+     ORDER BY jp.cierre_programado_en ASC`,
+    [idEstablecimiento],
+  );
+  return rows;
+}
+
+async function registrarJornadaProgramada(q, {
+  idEstablecimiento, fechaJornada, idSesion = null, estado,
+  aperturaProgramadaEn, cierreProgramadoEn, ahora, motivo = null,
+}) {
+  const { rows } = await q.query(
+    `INSERT INTO e5_jornada_programada (
+       id_establecimiento, fecha_jornada, id_sesion, estado,
+       apertura_programada_en, cierre_programado_en, creada_en, motivo
+     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     ON CONFLICT (id_establecimiento, fecha_jornada) DO NOTHING
+     RETURNING *`,
+    [
+      idEstablecimiento, fechaJornada, idSesion, estado,
+      aperturaProgramadaEn, cierreProgramadoEn, ahora, motivo,
+    ],
+  );
+  return rows[0] || null;
+}
+
+async function actualizarEstadoJornadaProgramada(q, {
+  idEstablecimiento, fechaJornada, estado, ahora, motivo = null,
+}) {
+  const { rows } = await q.query(
+    `UPDATE e5_jornada_programada
+     SET estado = $3,
+         cerrada_en = CASE WHEN $3 IN ('cerrada_auto', 'cerrada_manual') THEN COALESCE(cerrada_en, $4) ELSE cerrada_en END,
+         motivo = COALESCE($5, motivo)
+     WHERE id_establecimiento = $1 AND fecha_jornada = $2
+     RETURNING *`,
+    [idEstablecimiento, fechaJornada, estado, ahora, motivo],
+  );
+  return rows[0] || null;
+}
+
+async function marcarJornadasProgramadasCerradasPorSesion(q, idSesion, estado, ahora, motivo = null) {
+  await q.query(
+    `UPDATE e5_jornada_programada
+     SET estado = $2,
+         cerrada_en = COALESCE(cerrada_en, $3),
+         motivo = COALESCE($4, motivo)
+     WHERE id_sesion = $1 AND estado = 'abierta'`,
+    [idSesion, estado, ahora, motivo],
   );
 }
 
@@ -608,6 +703,9 @@ module.exports = {
   listarSesiones, obtenerSesionCompleta, insertarSesion, fijarEstadoSesion,
   marcarQrDesactivado, estaQrDesactivado, existeQrToken,
   jornadaAbierta, abrirJornada, cerrarJornada, listarJornadas,
+  obtenerJornadaProgramada, ultimaJornadaProgramadaEstablecimiento,
+  jornadasProgramadasPorCerrar, registrarJornadaProgramada,
+  actualizarEstadoJornadaProgramada, marcarJornadasProgramadasCerradasPorSesion,
   retirarPendientes, resumenSolicitudes, historialReproducciones,
   asegurarEstadoReproduccion, obtenerEstadoReproduccion, actualizarEstadoReproduccion, sesionesEnEspera, insertarReproduccionLista,
   buscarCatalogo,

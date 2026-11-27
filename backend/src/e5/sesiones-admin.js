@@ -71,6 +71,41 @@ function crearSesionesAdmin({ pool, flujo, ahora, emisor, publicBaseUrl = 'http:
     }));
   }
 
+  async function crearSesionTx(client, {
+    idEst, idSesion, qrToken, usuario = null,
+    activar = false, pausaManual = false, origen = 'manual', principal = false, t = ahora(),
+  }) {
+    await repo5.asegurarConfig(client, idEst, t);
+    if (await repo5.obtenerSesionCompleta(client, idSesion)) {
+      throw new ErrorApi(409, 'sesion_duplicada', 'Ya existe una sesión con ese identificador.');
+    }
+    if (await repo5.existeQrToken(client, qrToken)) {
+      throw new ErrorApi(409, 'qr_duplicado', 'Ese código QR ya fue utilizado. Todos los códigos QR deben ser diferentes.');
+    }
+    await repo5.insertarSesion(client, { idSesion, idEst, qrToken });
+    await asignarCodigoNuevo(client, { idSesion, t, generar: generarCodigo });
+    await repo5.asegurarEstadoReproduccion(client, idSesion, t);
+    await registrarAccion(client, {
+      idEst, usuario, accion: 'sesion_creada',
+      detalle: { id_sesion: idSesion, qr_token: qrToken, origen },
+    });
+    let qrEstado = 'inactivo';
+    let idJornada = null;
+    if (activar) {
+      qrEstado = pausaManual ? 'inactivo' : 'activo';
+      await repo5.fijarEstadoSesion(client, idSesion, { estado: 'activa', qrEstado });
+      idJornada = await repo5.abrirJornada(client, idSesion, origen, t);
+      await registrarAccion(client, {
+        idEst, usuario, accion: 'sesion_iniciada',
+        detalle: { id_sesion: idSesion, origen, qr_estado: qrEstado },
+      });
+    }
+    if (principal) {
+      await repo5.actualizarConfig(client, idEst, { id_sesion_principal: idSesion }, t);
+    }
+    return { qrEstado, idJornada };
+  }
+
   async function crearSesion(idEst, body, usuario) {
     const b = body && typeof body === 'object' ? body : {};
     const idSesion = b.id_sesion ? texto(b.id_sesion, 'id_sesion', { max: 40 }) : `SES-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
@@ -83,20 +118,10 @@ function crearSesionesAdmin({ pool, flujo, ahora, emisor, publicBaseUrl = 'http:
     }
     const t = ahora();
     await repo4.conTransaccion(pool, async (client) => {
-      await repo5.asegurarConfig(client, idEst, t);
-      if (await repo5.obtenerSesionCompleta(client, idSesion)) {
-        throw new ErrorApi(409, 'sesion_duplicada', 'Ya existe una sesión con ese identificador.');
-      }
-      if (await repo5.existeQrToken(client, qrToken)) {
-        throw new ErrorApi(409, 'qr_duplicado', 'Ese código QR ya fue utilizado. Todos los códigos QR deben ser diferentes.');
-      }
-      await repo5.insertarSesion(client, { idSesion, idEst, qrToken });
-      await asignarCodigoNuevo(client, { idSesion, t, generar: generarCodigo });
-      await repo5.asegurarEstadoReproduccion(client, idSesion, t);
-      if (b.principal === true) {
-        await repo5.actualizarConfig(client, idEst, { id_sesion_principal: idSesion }, t);
-      }
-      await registrarAccion(client, { idEst, usuario, accion: 'sesion_creada', detalle: { id_sesion: idSesion, qr_token: qrToken } });
+      await crearSesionTx(client, {
+        idEst, idSesion, qrToken, usuario,
+        activar: false, origen: 'manual', principal: b.principal === true, t,
+      });
     });
     emisor.emitir({ tipo: 'sesion_creada', sesion_id: idSesion, id_establecimiento: idEst, usuario, datos_evento: { qr_token: qrToken } });
     return (await listarSesiones(idEst)).find((s) => s.id_sesion === idSesion);
@@ -141,8 +166,9 @@ function crearSesionesAdmin({ pool, flujo, ahora, emisor, publicBaseUrl = 'http:
   /**
    * Desactiva la sesión, cierra el QR, retira solicitudes pendientes (conservar historial) y detiene el estado de reproducción.
    */
-  async function desactivarSesion(idEst, idSesion, usuario, { origen = 'manual', limpiarCola = true } = {}) {
+  async function desactivarSesion(idEst, idSesion, usuario, { origen = 'manual', motivo = null, limpiarCola = true } = {}) {
     const t = ahora();
+    const motivoFinal = motivo || (origen === 'horario' ? 'cierre_programado' : 'cierre_manual');
     const res = await repo4.conTransaccion(pool, async (client) => {
       const sesion = await verificarSesionDeEst(client, idEst, idSesion);
       const enCurso = await repo4.reproduccionEnCurso(client, idSesion, { bloquear: true });
@@ -160,20 +186,30 @@ function crearSesionesAdmin({ pool, flujo, ahora, emisor, publicBaseUrl = 'http:
         estado: 'detenida', pausada_en: null, lista_cancion: null, lista_inicio_en: null,
         tiempo_pausado_ms: 0, reproduccion_uid: null,
       }, t);
-      await repo5.cerrarJornada(client, idSesion, origen, t, retiradas.length);
-      if (origen !== 'horario') {
-        await repo5.marcarQrDesactivado(client, { idSesion, qrToken: sesion.qr_token, motivo: 'sesion_cerrada', ahora: t });
-        await revocarCodigo(client, { idSesion, motivo: 'sesion_cerrada', t });
-      }
+      await repo5.cerrarJornada(client, idSesion, origen, t, retiradas.length, motivoFinal);
+      // F8.2 Opción A: todo cierre (manual o programado) invalida de forma permanente el QR y el código de 6 dígitos.
+      await repo5.marcarQrDesactivado(client, { idSesion, qrToken: sesion.qr_token, motivo: 'sesion_cerrada', ahora: t });
+      await revocarCodigo(client, { idSesion, motivo: 'sesion_cerrada', t });
+      await repo5.marcarJornadasProgramadasCerradasPorSesion(
+        client,
+        idSesion,
+        origen === 'horario' ? 'cerrada_auto' : 'cerrada_manual',
+        t,
+        motivoFinal,
+      );
       if (cambio || retiradas.length > 0) {
-        await registrarAccion(client, { idEst, usuario, accion: 'sesion_cerrada',
-          detalle: { id_sesion: idSesion, origen, solicitudes_retiradas: retiradas.length } });
+        await registrarAccion(client, {
+          idEst, usuario, accion: 'sesion_cerrada',
+          detalle: { id_sesion: idSesion, origen, motivo: motivoFinal, solicitudes_retiradas: retiradas.length }
+        });
       }
       return { cambio, retiradas: retiradas.length };
     });
     if (res.cambio) {
-      emisor.emitir({ tipo: 'sesion_cerrada', sesion_id: idSesion, id_establecimiento: idEst, usuario,
-        datos_evento: { origen, solicitudes_retiradas: res.retiradas } });
+      emisor.emitir({
+        tipo: 'sesion_cerrada', sesion_id: idSesion, id_establecimiento: idEst, usuario,
+        datos_evento: { origen, motivo: motivoFinal, solicitudes_retiradas: res.retiradas }
+      });
       notificar(idSesion);
     }
     return { id_sesion: idSesion, estado: 'cerrada', qr_estado: 'inactivo', solicitudes_retiradas: res.retiradas };
@@ -195,8 +231,10 @@ function crearSesionesAdmin({ pool, flujo, ahora, emisor, publicBaseUrl = 'http:
       const cambio = sesion.qr_estado !== nuevo;
       if (cambio) {
         await repo5.fijarEstadoSesion(client, idSesion, { qrEstado: nuevo });
-        await registrarAccion(client, { idEst, usuario, accion: activo ? 'qr_activado' : 'qr_desactivado',
-          detalle: { id_sesion: idSesion, origen } });
+        await registrarAccion(client, {
+          idEst, usuario, accion: activo ? 'qr_activado' : 'qr_desactivado',
+          detalle: { id_sesion: idSesion, origen }
+        });
       }
       if (!activo && origen !== 'horario') {
         await repo5.marcarQrDesactivado(client, { idSesion, qrToken: sesion.qr_token, motivo: 'qr_desactivado', ahora: t });
@@ -205,8 +243,10 @@ function crearSesionesAdmin({ pool, flujo, ahora, emisor, publicBaseUrl = 'http:
       return { cambio, qr_estado: nuevo };
     });
     if (res.cambio) {
-      emisor.emitir({ tipo: activo ? 'qr_activado' : 'qr_desactivado', sesion_id: idSesion, id_establecimiento: idEst, usuario,
-        datos_evento: { origen } });
+      emisor.emitir({
+        tipo: activo ? 'qr_activado' : 'qr_desactivado', sesion_id: idSesion, id_establecimiento: idEst, usuario,
+        datos_evento: { origen }
+      });
       notificar(idSesion);
     }
     return { id_sesion: idSesion, qr_estado: res.qr_estado };
@@ -223,12 +263,16 @@ function crearSesionesAdmin({ pool, flujo, ahora, emisor, publicBaseUrl = 'http:
       if (reiniciarLista) {
         await repo5.actualizarEstadoReproduccion(client, idSesion, { lista_posicion: null, lista_cancion: null, lista_inicio_en: null }, t);
       }
-      await registrarAccion(client, { idEst, usuario, accion: 'mantenimiento_cola',
-        detalle: { id_sesion: idSesion, solicitudes_retiradas: retiradas.length, reiniciar_lista: reiniciarLista } });
+      await registrarAccion(client, {
+        idEst, usuario, accion: 'mantenimiento_cola',
+        detalle: { id_sesion: idSesion, solicitudes_retiradas: retiradas.length, reiniciar_lista: reiniciarLista }
+      });
       return { retiradas: retiradas.length };
     });
-    emisor.emitir({ tipo: 'mantenimiento_realizado', sesion_id: idSesion, id_establecimiento: idEst, usuario,
-      datos_evento: { solicitudes_retiradas: res.retiradas, reiniciar_lista: reiniciarLista } });
+    emisor.emitir({
+      tipo: 'mantenimiento_realizado', sesion_id: idSesion, id_establecimiento: idEst, usuario,
+      datos_evento: { solicitudes_retiradas: res.retiradas, reiniciar_lista: reiniciarLista }
+    });
     notificar(idSesion);
     return { id_sesion: idSesion, solicitudes_retiradas: res.retiradas, historial_conservado: true };
   }
@@ -308,8 +352,10 @@ function crearSesionesAdmin({ pool, flujo, ahora, emisor, publicBaseUrl = 'http:
   async function eliminarExcepcion(idEst, idExcepcion, usuario) {
     const eliminada = await repo5.eliminarExcepcion(pool, idEst, idExcepcion);
     if (!eliminada) throw new ErrorApi(404, 'excepcion_inexistente', 'La excepción no existe.');
-    await repo5.registrar(pool, { idEst, idUsuario: usuario.id_usuario, accion: 'horario_excepcion_eliminada',
-      detalle: { fecha: eliminada.fecha }, ahora: ahora() });
+    await repo5.registrar(pool, {
+      idEst, idUsuario: usuario.id_usuario, accion: 'horario_excepcion_eliminada',
+      detalle: { fecha: eliminada.fecha }, ahora: ahora()
+    });
     return { eliminada: true, fecha: eliminada.fecha };
   }
 
@@ -332,11 +378,15 @@ function crearSesionesAdmin({ pool, flujo, ahora, emisor, publicBaseUrl = 'http:
           }
         }
       }
-      await registrarAccion(client, { idEst, usuario, accion: pausada ? 'pausa_manual_iniciada' : 'pausa_manual_finalizada',
-        detalle: { motivo: motivoLimpio, sesiones: afectadas } });
+      await registrarAccion(client, {
+        idEst, usuario, accion: pausada ? 'pausa_manual_iniciada' : 'pausa_manual_finalizada',
+        detalle: { motivo: motivoLimpio, sesiones: afectadas }
+      });
     });
-    emisor.emitir({ tipo: pausada ? 'pausa_manual_iniciada' : 'pausa_manual_finalizada', id_establecimiento: idEst, usuario,
-      datos_evento: { motivo: motivoLimpio, sesiones: afectadas } });
+    emisor.emitir({
+      tipo: pausada ? 'pausa_manual_iniciada' : 'pausa_manual_finalizada', id_establecimiento: idEst, usuario,
+      datos_evento: { motivo: motivoLimpio, sesiones: afectadas }
+    });
     afectadas.forEach(notificar);
     return { pausa_manual: pausada, pausa_motivo: pausada ? motivoLimpio : null, sesiones_actualizadas: afectadas };
   }
@@ -359,6 +409,130 @@ function crearSesionesAdmin({ pool, flujo, ahora, emisor, publicBaseUrl = 'http:
     return asegurarEstablecimiento(idEst);
   }
 
+  /**
+   * F8.1 + Política de sesiones manuales:
+   * - Idempotente por `(id_establecimiento, fecha_jornada)` + advisory lock.
+   * - Si ya hay una sesión manual activa al llegar la apertura, registra `omitida_sesion_manual`
+   *   sin crear segunda sesión ni vincular la manual ni cerrarla automáticamente después.
+   * - Si no hay sesión activa y la jornada aún no ha sido procesada, crea y activa una nueva sesión
+   *   con su QR y código de 6 dígitos mediante `crearSesionTx`.
+   */
+  async function procesarAperturaProgramada(idEst, evalHorario) {
+    if (!evalHorario || !evalHorario.abierto || !evalHorario.fecha_jornada) {
+      return { accion: 'fuera_de_horario' };
+    }
+    const t = ahora();
+    const res = await repo4.conTransaccion(pool, async (client) => {
+      await client.query("SELECT pg_advisory_xact_lock(hashtext('f8_auto_' || $1))", [idEst]);
+      await repo5.asegurarConfig(client, idEst, t);
+      const cfg = await repo5.obtenerConfig(client, idEst, { bloquear: true });
+      if (!cfg.modo_automatico) return { accion: 'modo_manual' };
+
+      const jp = await repo5.obtenerJornadaProgramada(client, idEst, evalHorario.fecha_jornada);
+      if (jp) {
+        if (jp.estado === 'abierta' && jp.id_sesion) {
+          const sesion = await repo5.obtenerSesionCompleta(client, jp.id_sesion);
+          if (sesion && sesion.estado === 'activa') {
+            const qrDeseado = cfg.pausa_manual ? 'inactivo' : 'activo';
+            if (sesion.qr_estado !== qrDeseado && !(await repo5.estaQrDesactivado(client, sesion.id_sesion))) {
+              await repo5.fijarEstadoSesion(client, sesion.id_sesion, { qrEstado: qrDeseado });
+              return { accion: 'qr_sincronizado', id_sesion: sesion.id_sesion, notificarId: sesion.id_sesion };
+            }
+            return { accion: 'ya_activa', id_sesion: sesion.id_sesion };
+          }
+          await repo5.actualizarEstadoJornadaProgramada(client, {
+            idEstablecimiento: idEst,
+            fechaJornada: evalHorario.fecha_jornada,
+            estado: 'cerrada_manual',
+            ahora: t,
+            motivo: 'cerrada_antes_de_cierre_programado',
+          });
+          return { accion: 'ya_cerrada_manual', id_sesion: jp.id_sesion };
+        }
+        return { accion: 'ya_procesada', estado: jp.estado };
+      }
+
+      const activas = await repo5.sesionesActivasDeEstablecimiento(client, idEst);
+      if (activas.length > 0) {
+        await repo5.registrarJornadaProgramada(client, {
+          idEstablecimiento: idEst,
+          fechaJornada: evalHorario.fecha_jornada,
+          idSesion: null,
+          estado: 'omitida_sesion_manual',
+          aperturaProgramadaEn: evalHorario.apertura_programada_en,
+          cierreProgramadoEn: evalHorario.cierre_programado_en,
+          ahora: t,
+          motivo: `sesion_manual_activa:${activas[0].id_sesion}`,
+        });
+        await registrarAccion(client, {
+          idEst,
+          usuario: null,
+          accion: 'jornada_automatica_omitida',
+          detalle: {
+            fecha_jornada: evalHorario.fecha_jornada,
+            motivo: 'sesion_manual_activa',
+            id_sesion_manual: activas[0].id_sesion,
+          },
+        });
+        return { accion: 'omitida_sesion_manual', id_sesion_manual: activas[0].id_sesion };
+      }
+
+      const idSesion = `SES-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
+      const qrToken = `ponga-${crypto.randomBytes(6).toString('base64url')}`;
+      await crearSesionTx(client, {
+        idEst,
+        idSesion,
+        qrToken,
+        usuario: null,
+        activar: true,
+        pausaManual: cfg.pausa_manual,
+        origen: 'horario',
+        principal: true,
+        t,
+      });
+      await repo5.registrarJornadaProgramada(client, {
+        idEstablecimiento: idEst,
+        fechaJornada: evalHorario.fecha_jornada,
+        idSesion,
+        estado: 'abierta',
+        aperturaProgramadaEn: evalHorario.apertura_programada_en,
+        cierreProgramadoEn: evalHorario.cierre_programado_en,
+        ahora: t,
+        motivo: 'apertura_programada',
+      });
+      return { accion: 'creada_automatica', id_sesion: idSesion, qr_token: qrToken, notificarId: idSesion };
+    });
+
+    if (res.accion === 'creada_automatica') {
+      emisor.emitir({ tipo: 'sesion_creada', sesion_id: res.id_sesion, id_establecimiento: idEst, usuario: null, datos_evento: { qr_token: res.qr_token, origen: 'horario' } });
+      emisor.emitir({ tipo: 'sesion_iniciada', sesion_id: res.id_sesion, id_establecimiento: idEst, usuario: null, datos_evento: { origen: 'horario' } });
+    }
+    if (res.notificarId) notificar(res.notificarId);
+    return res;
+  }
+
+  /**
+   * F8.2 Opción A: cierra únicamente sesiones vinculadas a `e5_jornada_programada`
+   * cuya hora de cierre llegó o cuyo horario dejó de estar abierto. Nunca cierra sesiones manuales.
+   */
+  async function procesarCierreProgramado(idEst, evalHorario) {
+    const t = ahora();
+    const activasProg = await repo5.jornadasProgramadasPorCerrar(pool, idEst, t);
+    const cerradas = [];
+    for (const jp of activasProg) {
+      const vencioCierre = jp.cierre_programado_en != null && t >= Number(jp.cierre_programado_en);
+      const fueraDeJornada = !evalHorario || !evalHorario.abierto || evalHorario.fecha_jornada !== jp.fecha_jornada;
+      if (!vencioCierre && !fueraDeJornada) continue;
+      await desactivarSesion(idEst, jp.id_sesion, null, {
+        origen: 'horario',
+        motivo: 'cierre_programado',
+        limpiarCola: true,
+      });
+      cerradas.push(jp.id_sesion);
+    }
+    return { cerradas };
+  }
+
   async function generarQrPng(idEst, idSesion) {
     const s = await verificarSesionDeEst(pool, idEst, idSesion);
     const base = publicBaseUrl.replace(/\/+$/, '');
@@ -370,6 +544,7 @@ function crearSesionesAdmin({ pool, flujo, ahora, emisor, publicBaseUrl = 'http:
     asegurarEstablecimiento, resumenHorario, listarSesiones, crearSesion,
     activarSesion, desactivarSesion, cambiarEstadoQr, limpiarCola, obtenerMantenimiento,
     guardarHorarios, guardarExcepcion, eliminarExcepcion, fijarPausaManual, configurarAutomatico,
+    procesarAperturaProgramada, procesarCierreProgramado,
     generarQrPng,
   };
 }

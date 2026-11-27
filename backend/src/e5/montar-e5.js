@@ -19,6 +19,7 @@ const { crearDisplayServicio } = require('./display');
 const { montarRutasPublicas } = require('./rutas-public');
 const { manejar, ErrorApi, idNumero } = require('./comun-e5');
 const { leerDispositivo } = require('../rutas-e4');
+const { resolverVentanaInactivoMs } = require('../comun-e4');
 const { crearLimitadorIntentos, crearResolutorCodigo } = require('./codigo-acceso');
 const repo5 = require('./repositorio-e5');
 
@@ -99,8 +100,10 @@ function montarE5(app, { pool, youtube, almacenEventos, ahora = Date.now, config
     res.json(await bonus.listarGeneros());
   }));
 
+  const ventanaInactivoRecienteMs = resolverVentanaInactivoMs(config.ventanaInactivoRecienteMs);
   const router = crearRouterE5({
-    pool, youtube, auth, sesionesAdmin, bloqueos, listas, reproductor, bonus, display, flujo: e4.flujo, conectividad: e4.conectividad, ahora,
+    pool, youtube, auth, sesionesAdmin, bloqueos, listas, reproductor, bonus, display,
+    flujo: e4.flujo, conectividad: e4.conectividad, ahora, ventanaInactivoRecienteMs,
   });
   app.use('/api/admin', router);
   montarRutasPublicas(app, { display, reproductor, bonus, flujo: e4.flujo });

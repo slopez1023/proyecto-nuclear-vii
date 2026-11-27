@@ -42,6 +42,24 @@ function crearConectividad({
     return n + (virtuales.get(idSesion) || 0);
   }
 
+  function listarActivos(idSesion) {
+    const t = ahora();
+    const uuids = [];
+    const idsDispositivos = [];
+    const mapa = porSesion.get(idSesion);
+    if (mapa) {
+      for (const [uuid, d] of mapa) {
+        if (d.abiertas > 0 || t - d.desconectadoEn < graciaMs) {
+          uuids.push(uuid);
+          if (d.idDispositivo != null) idsDispositivos.push(d.idDispositivo);
+        } else {
+          mapa.delete(uuid);
+        }
+      }
+    }
+    return { uuids, idsDispositivos, virtuales: virtuales.get(idSesion) || 0 };
+  }
+
   /** Avisa cuando cambia el conteo neto de dispositivos o cuando cambia el rango de votación de la sesión. */
   function revisar(idSesion) {
     const activos = contarActivos(idSesion);
@@ -54,10 +72,11 @@ function crearConectividad({
     if (actual !== previo) for (const fn of oyentesRango) fn(idSesion);
   }
 
-  function conectar(idSesion, uuid) {
-    const d = dispositivos(idSesion).get(uuid) || { abiertas: 0, desconectadoEn: null };
+  function conectar(idSesion, uuid, idDispositivo = null) {
+    const d = dispositivos(idSesion).get(uuid) || { abiertas: 0, desconectadoEn: null, idDispositivo: null };
     d.abiertas++;
     d.desconectadoEn = null;
+    if (idDispositivo != null) d.idDispositivo = Number(idDispositivo);
     dispositivos(idSesion).set(uuid, d);
     revisar(idSesion);
   }
@@ -81,6 +100,7 @@ function crearConectividad({
 
   return {
     contarActivos,
+    listarActivos,
     conectar,
     desconectar,
     fijarVirtuales,

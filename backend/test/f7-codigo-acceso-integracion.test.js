@@ -153,35 +153,37 @@ test('F7 resolución del código, vigencia, respuesta uniforme sin enumeración,
     assert.equal(filaRev.rows[0].vigente, false);
     assert.equal(filaRev.rows[0].motivo_revocacion, 'sesion_cerrada');
 
-    // Cierre por horario conserva vigencia lógica (vigente=true), bloquea mientras esté cerrada y reactiva al abrir
-    await e.pedirAdmin('POST', '/sesiones', { cuerpo: { id_sesion: 'SES-F7-HOR', qr_token: 'qr-f7-hor-001' } });
-    await e.pedirAdmin('POST', '/sesiones/SES-F7-HOR/activar', { cuerpo: {} });
-    // Reloj por defecto en helpers/e4 es 2026-11-10T20:00Z (martes 15:00 Bogota). Horario 18:00-23:00 cierra la sesión.
+    // F8 Opción A: cierre automático revoca el código de 6 dígitos y el QR de la sesión automática
+    await e.pedirAdmin('POST', `/sesiones/${SESION}/desactivar`, { cuerpo: {} });
+    await e.pedirAdmin('POST', '/sesiones/SES-F7-ACT/desactivar', { cuerpo: {} });
+    await e.pedirAdmin('POST', '/sesiones/SES-F7-NUEVA/desactivar', { cuerpo: {} });
     await e.pedirAdmin('PUT', '/horarios', {
       cuerpo: { zona_horaria: 'America/Bogota', horarios: [{ dia_semana: 2, apertura: '18:00', cierre: '23:00', activo: true }] },
     });
     await e.pedirAdmin('PATCH', '/establecimiento/automatico', {
-      cuerpo: { modo_automatico: true, id_sesion_principal: 'SES-F7-HOR' },
+      cuerpo: { modo_automatico: true },
     });
-    await e.e5.planificador.ejecutarCiclo();
-    const rowHor = await e.pool.query('SELECT codigo, vigente FROM e5_codigo_acceso WHERE id_sesion = $1', ['SES-F7-HOR']);
-    assert.equal(rowHor.rows[0].vigente, true);
-    assert.equal((await e.pedir('POST', '/api/sesiones/acceso-codigo', {
-      dispositivo: uuid(6), cuerpo: { codigo: '778899' },
-    })).status, 404);
-
+    // 19:00 Bogota: apertura automática crea sesión nueva con nuevo código
     e.reloj.avanzar(4 * 60 * 60 * 1000);
     await e.e5.planificador.ejecutarCiclo();
-    const rowReabierta = await e.pedir('POST', '/api/sesiones/acceso-codigo', {
-      dispositivo: uuid(6), cuerpo: { codigo: '778899' },
-    });
-    assert.equal(rowReabierta.status, 200);
-    assert.equal(rowReabierta.body.qr_token, 'qr-f7-hor-001');
+    const pAuto = await e.pedirAdmin('GET', '/panel');
+    const sesHor = pAuto.body.sesiones.find((s) => s.estado === 'activa');
+    assert.ok(sesHor);
+    assert.ok(sesHor.codigo_acceso);
+
+    // 23:05 Bogota: cierre automático revoca el código de 6 dígitos y el QR
+    e.reloj.avanzar((4 * 60 + 5) * 60 * 1000);
+    await e.e5.planificador.ejecutarCiclo();
+    const rowHor = await e.pool.query('SELECT codigo, vigente FROM e5_codigo_acceso WHERE id_sesion = $1', [sesHor.id_sesion]);
+    assert.equal(rowHor.rows[0].vigente, false);
+    assert.equal((await e.pedir('POST', '/api/sesiones/acceso-codigo', {
+      dispositivo: uuid(6), cuerpo: { codigo: sesHor.codigo_acceso },
+    })).status, 404);
 
     // Ningún endpoint público de display expone el código
-    const disp = await e.pedirAdmin('POST', '/sesiones/SES-F7-HOR/display', { cuerpo: {} });
+    const disp = await e.pedirAdmin('POST', `/sesiones/${sesHor.id_sesion}/display`, { cuerpo: {} });
     const estPub = await e.pedir('GET', `/api/public/${disp.body.display_token}/estado`);
-    assert.equal(JSON.stringify(estPub.body).includes('778899'), false);
+    assert.equal(JSON.stringify(estPub.body).includes(sesHor.codigo_acceso), false);
     assert.equal(JSON.stringify(estPub.body).includes('codigo_acceso'), false);
   } finally {
     await e.cerrar();

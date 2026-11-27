@@ -16,6 +16,12 @@ class ErrorApi extends Error {
 
 const UUID_REGEX = require('./eventos').UUID_REGEX;
 const VIDEO_ID_REGEX = /^[A-Za-z0-9_-]{11}$/;
+const VENTANA_INACTIVO_RECIENTE_MS = 30 * 60_000;
+
+function resolverVentanaInactivoMs(valor = process.env.DISPOSITIVO_INACTIVO_MS) {
+  const n = Number(valor);
+  return Number.isFinite(n) && n > 0 ? Math.trunc(n) : VENTANA_INACTIVO_RECIENTE_MS;
+}
 
 // ---------------------------------------------------------------- identificadores y fechas
 
@@ -103,6 +109,7 @@ function esperasEstimadas(restante, cola) {
 
 module.exports = {
   ErrorApi, UUID_REGEX, VIDEO_ID_REGEX,
+  VENTANA_INACTIVO_RECIENTE_MS, resolverVentanaInactivoMs,
   idTexto, idNumero, iso,
   intervaloPorActivos, calcularMiVotacion,
   restanteActual, esperasEstimadas,
