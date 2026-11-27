@@ -235,8 +235,23 @@ function crearSesionesAdmin({ pool, flujo, ahora, emisor, publicBaseUrl = 'http:
 
   async function obtenerMantenimiento(idEst, idSesion) {
     await verificarSesionDeEst(pool, idEst, idSesion);
+    const cfg = await asegurarEstablecimiento(idEst);
+    const estRep = await repo5.obtenerEstadoReproduccion(pool, idSesion);
+    let listaInfo = null;
+    if (cfg && cfg.id_lista_defecto) {
+      const lista = await repo5.obtenerLista(pool, idEst, cfg.id_lista_defecto);
+      if (lista) {
+        const canciones = await repo5.cancionesDeLista(pool, lista.id_lista);
+        listaInfo = {
+          nombre: lista.nombre,
+          total_canciones: canciones.length,
+          estado_actual: estRep ? estRep.estado : 'detenida',
+        };
+      }
+    }
     return {
       resumen_solicitudes: await repo5.resumenSolicitudes(pool, idSesion),
+      lista_predeterminada: listaInfo,
       jornadas: (await repo5.listarJornadas(pool, idSesion)).map((j) => ({
         ...j, abierta_en: iso(j.abierta_en), cerrada_en: iso(j.cerrada_en),
       })),

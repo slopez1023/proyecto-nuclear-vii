@@ -312,7 +312,9 @@ function crearBonus({ pool, e4, flujo, ahora, emisor, intervaloRespaldoMs = 24 *
 
   async function listarRespaldos(idEst, limite = 15) {
     const { rows } = await pool.query(
-      `SELECT id_respaldo, generado_en, origen, archivo, total_canciones FROM e5_respaldo_lista
+      `SELECT id_respaldo, generado_en, origen, archivo, total_canciones,
+              COALESCE(jsonb_array_length(contenido->'listas_predeterminadas'), 0)::int AS total_listas
+       FROM e5_respaldo_lista
        WHERE id_establecimiento = $1 ORDER BY generado_en DESC LIMIT $2`,
       [idEst, limite],
     );
