@@ -10,10 +10,11 @@ const repo5 = require('./repositorio-e5');
 const { TOKEN_REGEX } = require('../sesiones');
 const { evaluarHorario, zonaValida } = require('./horarios');
 const { ErrorApi, aMinutos, aHora, fechaValida, texto, booleano, iso } = require('./comun-e5');
+const { asignarCodigoNuevo, revocarCodigo } = require('./codigo-acceso');
 
 const ID_SESION_REGEX = /^[A-Za-z0-9_-]{4,40}$/;
 
-function crearSesionesAdmin({ pool, flujo, ahora, emisor, publicBaseUrl = 'http://localhost:3000' }) {
+function crearSesionesAdmin({ pool, flujo, ahora, emisor, publicBaseUrl = 'http://localhost:3000', generarCodigo }) {
   const registrarAccion = (client, { idEst, usuario, accion, detalle }) =>
     repo5.registrar(client, { idEst, idUsuario: usuario ? usuario.id_usuario : null, accion, detalle, ahora: ahora() });
 
@@ -62,6 +63,7 @@ function crearSesionesAdmin({ pool, flujo, ahora, emisor, publicBaseUrl = 'http:
       estado: s.estado,
       qr_estado: s.qr_estado,
       desactivado_permanente: Boolean(s.desactivado_permanente),
+      codigo_acceso: s.codigo_acceso || null,
       version_cola: s.version_cola,
       pendientes: s.pendientes,
       solicitudes_historicas: s.solicitudes_historicas,
@@ -89,6 +91,7 @@ function crearSesionesAdmin({ pool, flujo, ahora, emisor, publicBaseUrl = 'http:
         throw new ErrorApi(409, 'qr_duplicado', 'Ese código QR ya fue utilizado. Todos los códigos QR deben ser diferentes.');
       }
       await repo5.insertarSesion(client, { idSesion, idEst, qrToken });
+      await asignarCodigoNuevo(client, { idSesion, t, generar: generarCodigo });
       await repo5.asegurarEstadoReproduccion(client, idSesion, t);
       if (b.principal === true) {
         await repo5.actualizarConfig(client, idEst, { id_sesion_principal: idSesion }, t);
@@ -160,6 +163,7 @@ function crearSesionesAdmin({ pool, flujo, ahora, emisor, publicBaseUrl = 'http:
       await repo5.cerrarJornada(client, idSesion, origen, t, retiradas.length);
       if (origen !== 'horario') {
         await repo5.marcarQrDesactivado(client, { idSesion, qrToken: sesion.qr_token, motivo: 'sesion_cerrada', ahora: t });
+        await revocarCodigo(client, { idSesion, motivo: 'sesion_cerrada', t });
       }
       if (cambio || retiradas.length > 0) {
         await registrarAccion(client, { idEst, usuario, accion: 'sesion_cerrada',
@@ -196,6 +200,7 @@ function crearSesionesAdmin({ pool, flujo, ahora, emisor, publicBaseUrl = 'http:
       }
       if (!activo && origen !== 'horario') {
         await repo5.marcarQrDesactivado(client, { idSesion, qrToken: sesion.qr_token, motivo: 'qr_desactivado', ahora: t });
+        await revocarCodigo(client, { idSesion, motivo: 'qr_desactivado', t });
       }
       return { cambio, qr_estado: nuevo };
     });
