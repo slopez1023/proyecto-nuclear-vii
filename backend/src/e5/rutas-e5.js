@@ -15,7 +15,7 @@ const idEntero = (valor, nombre) => {
   return n;
 };
 
-function crearRouterE5({ pool, youtube, auth, sesionesAdmin, bloqueos, listas, reproductor, bonus, conectividad, ahora }) {
+function crearRouterE5({ pool, youtube, auth, sesionesAdmin, bloqueos, listas, reproductor, bonus, display, flujo, conectividad, ahora }) {
   const router = express.Router();
   const soloAdmin = auth.exigirRol('admin');
   const operador = auth.exigirRol('admin', 'dj');
@@ -262,6 +262,60 @@ function crearRouterE5({ pool, youtube, auth, sesionesAdmin, bloqueos, listas, r
   }));
   router.post('/sonido/latido', operador, manejar(async (req, res) => {
     res.json(await bonus.registrarLatido(req.usuario.id_establecimiento));
+  }));
+
+  // ------------------------------------------------------------ pantalla pública (gestión, enlace, autorización y liberación)
+  router.get('/sesiones/:idSesion/display', operador, manejar(async (req, res) => {
+    res.json(await display.obtenerEstadoDisplay(req.usuario.id_establecimiento, req.params.idSesion));
+  }));
+  router.post('/sesiones/:idSesion/display', operador, manejar(async (req, res) => {
+    const s = await repo5.obtenerSesionCompleta(pool, req.params.idSesion);
+    if (!s || s.id_establecimiento !== req.usuario.id_establecimiento) {
+      throw new ErrorApi(404, 'sesion_inexistente', 'La sesión no existe en este establecimiento.');
+    }
+    if (s.estado !== 'activa') {
+      throw new ErrorApi(409, 'sesion_cerrada', 'La sesión está cerrada.');
+    }
+    await display.asegurarDisplay(req.usuario.id_establecimiento, req.params.idSesion, req.usuario);
+    res.json(await display.obtenerEstadoDisplay(req.usuario.id_establecimiento, req.params.idSesion));
+  }));
+  router.post('/sesiones/:idSesion/display/regenerar', operador, manejar(async (req, res) => {
+    const s = await repo5.obtenerSesionCompleta(pool, req.params.idSesion);
+    if (!s || s.id_establecimiento !== req.usuario.id_establecimiento) {
+      throw new ErrorApi(404, 'sesion_inexistente', 'La sesión no existe en este establecimiento.');
+    }
+    if (s.estado !== 'activa') {
+      throw new ErrorApi(409, 'sesion_cerrada', 'La sesión está cerrada.');
+    }
+    await display.regenerarDisplay(req.usuario.id_establecimiento, req.params.idSesion, req.usuario);
+    res.json(await display.obtenerEstadoDisplay(req.usuario.id_establecimiento, req.params.idSesion));
+  }));
+  router.delete('/sesiones/:idSesion/display', operador, manejar(async (req, res) => {
+    await display.revocarDisplay(req.usuario.id_establecimiento, req.params.idSesion, req.usuario);
+    res.json(await display.obtenerEstadoDisplay(req.usuario.id_establecimiento, req.params.idSesion));
+  }));
+  router.post('/sesiones/:idSesion/display/autorizar-control', operador, manejar(async (req, res) => {
+    res.json(await display.autorizarControl(req.usuario.id_establecimiento, req.params.idSesion, req.usuario));
+  }));
+  router.post('/sesiones/:idSesion/display/liberar-control', operador, manejar(async (req, res) => {
+    res.json(await display.liberarControl(req.usuario.id_establecimiento, req.params.idSesion, req.usuario));
+  }));
+
+  // Flujo SSE autenticado para operadores (/admin y /sonido): permanece vivo aunque el QR esté inactivo y no cuenta como dispositivo cliente.
+  router.get('/sesiones/:idSesion/flujo', operador, manejar(async (req, res) => {
+    const s = await repo5.obtenerSesionCompleta(pool, req.params.idSesion);
+    if (!s || s.id_establecimiento !== req.usuario.id_establecimiento) {
+      throw new ErrorApi(404, 'sesion_inexistente', 'La sesión no existe en este establecimiento.');
+    }
+    if (s.estado !== 'activa') {
+      throw new ErrorApi(409, 'sesion_cerrada', 'La sesión está cerrada.');
+    }
+    flujo.abrir(req, res, {
+      sesion: { id_sesion: s.id_sesion, id_establecimiento: s.id_establecimiento },
+      uuid: null,
+      idDispositivo: null,
+      ignorarQrInactivo: true,
+    });
   }));
 
   return router;

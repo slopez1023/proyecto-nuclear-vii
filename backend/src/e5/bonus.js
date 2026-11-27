@@ -15,7 +15,7 @@ const { ErrorApi, texto, entero, booleano, iso, idTexto, cancionJson, videoId } 
 
 const CARPETA_RESPALDOS = path.join(__dirname, '..', '..', 'data', 'respaldos');
 const LATIDO_VIGENTE_MS = 20_000;
-const SALIDAS = new Set(['panel', 'equipo_local']);
+const SALIDAS = new Set(['panel', 'equipo_local', 'pantalla_publica']);
 const ORDENES = new Set(['popularidad', 'duracion_asc', 'duracion_desc', 'titulo']);
 
 // ---------------------------------------------------------------- géneros (funciones puras)
@@ -237,8 +237,10 @@ function crearBonus({ pool, e4, flujo, ahora, emisor, intervaloRespaldoMs = 24 *
        ON CONFLICT (id_cancion) DO UPDATE SET genero = EXCLUDED.genero, origen = 'manual', fijado_en = EXCLUDED.fijado_en`,
       [cancion.id_cancion, genero, t],
     );
-    await repo5.registrar(pool, { idEst, idUsuario: usuario.id_usuario, accion: 'cancion_genero_actualizado',
-      detalle: { youtube_video_id: ytId, genero }, ahora: t });
+    await repo5.registrar(pool, {
+      idEst, idUsuario: usuario.id_usuario, accion: 'cancion_genero_actualizado',
+      detalle: { youtube_video_id: ytId, genero }, ahora: t
+    });
     return { youtube_video_id: ytId, genero, origen: 'manual' };
   }
 
@@ -297,10 +299,14 @@ function crearBonus({ pool, e4, flujo, ahora, emisor, intervaloRespaldoMs = 24 *
        VALUES ($1, $2, $3, $4, $5, $6::jsonb) RETURNING id_respaldo`,
       [idEst, t, origen, archivo, contenido.canciones_mas_populares.length, JSON.stringify(contenido)],
     );
-    await repo5.registrar(pool, { idEst, idUsuario: usuario ? usuario.id_usuario : null, accion: 'respaldo_listas_generado',
-      detalle: { id_respaldo: rows[0].id_respaldo, origen, archivo }, ahora: t });
-    emisor.emitir({ tipo: 'respaldo_listas_generado', id_establecimiento: idEst, usuario,
-      datos_evento: { id_respaldo: rows[0].id_respaldo, origen, total_canciones: contenido.canciones_mas_populares.length } });
+    await repo5.registrar(pool, {
+      idEst, idUsuario: usuario ? usuario.id_usuario : null, accion: 'respaldo_listas_generado',
+      detalle: { id_respaldo: rows[0].id_respaldo, origen, archivo }, ahora: t
+    });
+    emisor.emitir({
+      tipo: 'respaldo_listas_generado', id_establecimiento: idEst, usuario,
+      datos_evento: { id_respaldo: rows[0].id_respaldo, origen, total_canciones: contenido.canciones_mas_populares.length }
+    });
     return { id_respaldo: rows[0].id_respaldo, generado_en: iso(t), origen, archivo, total_canciones: contenido.canciones_mas_populares.length };
   }
 
@@ -366,7 +372,7 @@ function crearBonus({ pool, e4, flujo, ahora, emisor, intervaloRespaldoMs = 24 *
     if (b.volumen !== undefined) cambios.volumen = entero(b.volumen, 'volumen', { min: 0, max: 100 });
     if (b.silenciado !== undefined) cambios.silenciado = booleano(b.silenciado, 'silenciado');
     if (b.salida !== undefined) {
-      if (!SALIDAS.has(b.salida)) throw new ErrorApi(400, 'dato_invalido', 'salida debe ser "panel" o "equipo_local".');
+      if (!SALIDAS.has(b.salida)) throw new ErrorApi(400, 'dato_invalido', 'salida debe ser "panel", "equipo_local" o "pantalla_publica".');
       cambios.salida = b.salida;
     }
     const claves = Object.keys(cambios);
@@ -377,9 +383,18 @@ function crearBonus({ pool, e4, flujo, ahora, emisor, intervaloRespaldoMs = 24 *
       `UPDATE e5_sonido SET ${claves.map((k, i) => `${k} = $${i + 3}`).join(', ')}, actualizado_en = $2 WHERE id_establecimiento = $1`,
       [idEst, t, ...claves.map((k) => cambios[k])],
     );
+    if (cambios.salida && cambios.salida !== 'pantalla_publica') {
+      await repo5.invalidarControlDisplaysDeEstablecimiento(pool, idEst);
+    }
     await repo5.registrar(pool, { idEst, idUsuario: usuario.id_usuario, accion: 'sonido_actualizado', detalle: cambios, ahora: t });
     emisor.emitir({ tipo: 'sonido_actualizado', id_establecimiento: idEst, usuario, datos_evento: cambios });
-    return leerSonido(idEst);
+    const actualizado = await leerSonido(idEst);
+    if (flujo && typeof flujo.notificarEvento === 'function') {
+      const activas = await repo5.sesionesActivasDeEstablecimiento(pool, idEst);
+      const payload = { volumen: actualizado.volumen, silenciado: actualizado.silenciado, salida: actualizado.salida };
+      for (const s of activas) flujo.notificarEvento(s.id_sesion, 'sonido', payload);
+    }
+    return actualizado;
   }
 
   /** El equipo conectado al sistema de sonido avisa que sigue activo (página /sonido). */

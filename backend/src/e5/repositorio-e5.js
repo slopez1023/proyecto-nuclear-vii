@@ -270,7 +270,7 @@ async function obtenerEstadoReproduccion(q, idSesion, { bloquear = false } = {})
   return rows[0] || null;
 }
 
-const CAMPOS_ESTADO = new Set(['estado', 'pausada_en', 'lista_id', 'lista_posicion', 'lista_cancion', 'lista_inicio_en']);
+const CAMPOS_ESTADO = new Set(['estado', 'pausada_en', 'lista_id', 'lista_posicion', 'lista_cancion', 'lista_inicio_en', 'tiempo_pausado_ms', 'reproduccion_uid']);
 
 async function actualizarEstadoReproduccion(q, idSesion, cambios, ahora) {
   const claves = Object.keys(cambios).filter((k) => CAMPOS_ESTADO.has(k));
@@ -517,6 +517,88 @@ async function eliminarExcepcion(q, idEst, idExcepcion) {
   return rows[0] || null;
 }
 
+// ---------------------------------------------------------------- pantalla pública (e5_display)
+
+async function obtenerDisplayPorToken(q, displayToken, { bloquear = false } = {}) {
+  const { rows } = await q.query(
+    `SELECT d.id_display, d.id_establecimiento, d.id_sesion, d.display_token, d.activo,
+            d.creado_en, d.revocado_en, d.ultimo_acceso,
+            d.claim_hash, d.claim_expira_en, d.claim_intentos,
+            d.control_hash, d.control_expira_en, d.ultimo_latido_display,
+            s.estado AS sesion_estado, s.qr_estado, e.nombre AS establecimiento
+     FROM e5_display d
+     JOIN sesion s ON s.id_sesion = d.id_sesion
+     JOIN establecimiento e ON e.id_establecimiento = d.id_establecimiento
+     WHERE d.display_token = $1${bloquear ? ' FOR UPDATE OF d' : ''}`,
+    [displayToken],
+  );
+  return rows[0] || null;
+}
+
+async function obtenerDisplayActivoPorSesion(q, idSesion, { bloquear = false } = {}) {
+  const { rows } = await q.query(
+    `SELECT id_display, id_establecimiento, id_sesion, display_token, activo, creado_en, revocado_en, ultimo_acceso,
+            claim_hash, claim_expira_en, claim_intentos, control_hash, control_expira_en, ultimo_latido_display
+     FROM e5_display
+     WHERE id_sesion = $1 AND activo = true${bloquear ? ' FOR UPDATE' : ''}`,
+    [idSesion],
+  );
+  return rows[0] || null;
+}
+
+async function insertarDisplay(q, { idEst, idSesion, displayToken, ahora }) {
+  const { rows } = await q.query(
+    `INSERT INTO e5_display (id_establecimiento, id_sesion, display_token, activo, creado_en)
+     VALUES ($1, $2, $3, true, $4)
+     RETURNING id_display, id_establecimiento, id_sesion, display_token, activo, creado_en, revocado_en, ultimo_acceso`,
+    [idEst, idSesion, displayToken, ahora],
+  );
+  return rows[0];
+}
+
+async function revocarDisplaysDeSesion(q, idSesion, ahora) {
+  const { rows } = await q.query(
+    `UPDATE e5_display
+     SET activo = false, revocado_en = $2,
+         claim_hash = NULL, claim_expira_en = NULL, claim_intentos = 0,
+         control_hash = NULL, control_expira_en = NULL
+     WHERE id_sesion = $1 AND activo = true
+     RETURNING id_display, display_token, revocado_en`,
+    [idSesion, ahora],
+  );
+  return rows;
+}
+
+async function invalidarControlDisplaysDeEstablecimiento(q, idEst) {
+  await q.query(
+    `UPDATE e5_display
+     SET claim_hash = NULL, claim_expira_en = NULL, claim_intentos = 0,
+         control_hash = NULL, control_expira_en = NULL
+     WHERE id_establecimiento = $1 AND activo = true`,
+    [idEst],
+  );
+}
+
+async function sesionesActivasDeEstablecimiento(q, idEst) {
+  const { rows } = await q.query(
+    `SELECT id_sesion FROM sesion WHERE id_establecimiento = $1 AND estado = 'activa'`,
+    [idEst],
+  );
+  return rows;
+}
+
+async function registrarAccesoDisplay(q, idDisplay, ahora) {
+  await q.query('UPDATE e5_display SET ultimo_acceso = $2 WHERE id_display = $1', [idDisplay, ahora]);
+}
+
+async function existeDisplayRevocadoEnSesion(q, idSesion) {
+  const { rows } = await q.query(
+    'SELECT 1 FROM e5_display WHERE id_sesion = $1 AND activo = false LIMIT 1',
+    [idSesion],
+  );
+  return rows.length > 0;
+}
+
 module.exports = {
   obtenerUsuarioPorNombre, insertarUsuario, actualizarClaveUsuario, contarUsuarios,
   insertarSesionUsuario, usuarioPorToken, cerrarSesionUsuario,
@@ -532,4 +614,7 @@ module.exports = {
   agregarCancionALista, quitarCancionDeLista, reordenarLista, listasEnRotacion,
   registrar, leerRegistro,
   leerHorarios, guardarHorario, leerExcepciones, guardarExcepcion, eliminarExcepcion,
+  obtenerDisplayPorToken, obtenerDisplayActivoPorSesion, insertarDisplay, revocarDisplaysDeSesion,
+  invalidarControlDisplaysDeEstablecimiento, sesionesActivasDeEstablecimiento, registrarAccesoDisplay,
+  existeDisplayRevocadoEnSesion,
 };

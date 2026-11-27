@@ -25,6 +25,8 @@
     ytVideoCargado: null,
     ytListo: false,
     toast: null,
+    display: null,
+    claimTemporal: null,
     sse: null,
     sseSesionId: null,
     sseVersion: null,
@@ -123,8 +125,11 @@
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
       if (res.status === 401 && state.usuario) {
+        detenerRespaldoSonido();
+        limpiarTimersDisplay();
         cerrarFlujo();
         state.usuario = null;
+        state.display = null;
         render();
       }
       throw new Error((data.error && data.error.mensaje) || `Error ${res.status}`);
@@ -139,7 +144,7 @@
   };
 
   function salidaExterna() {
-    return Boolean(state.sonido && state.sonido.salida === 'equipo_local');
+    return Boolean(state.sonido && (state.sonido.salida === 'equipo_local' || state.sonido.salida === 'pantalla_publica'));
   }
 
   /** Aplica volumen/silencio del sistema de sonido al reproductor del panel (o lo silencia si la salida es el equipo del local). */
@@ -214,8 +219,11 @@
       return;
     }
     if (salidaExterna()) {
-      // El audio sale por el equipo conectado al sistema de sonido del local (/sonido): el panel solo controla.
-      if (state.ytPlayer && typeof state.ytPlayer.pauseVideo === 'function') { try { state.ytPlayer.pauseVideo(); } catch {} }
+      // El audio sale por el equipo conectado al sistema de sonido del local (/sonido) o pantalla pública: el panel solo controla.
+      if (state.ytPlayer) {
+        try { if (typeof state.ytPlayer.mute === 'function') state.ytPlayer.mute(); } catch {}
+        try { if (typeof state.ytPlayer.pauseVideo === 'function') state.ytPlayer.pauseVideo(); } catch {}
+      }
       return;
     }
     if (!state.ytPlayer) {
@@ -295,8 +303,35 @@
     }
   }
 
+  let sonidoRespaldoTimer = null;
+  function detenerRespaldoSonido() {
+    if (sonidoRespaldoTimer) {
+      clearInterval(sonidoRespaldoTimer);
+      sonidoRespaldoTimer = null;
+    }
+  }
+
+  function gestionarRespaldoSonido() {
+    if (!state.usuario) {
+      detenerRespaldoSonido();
+      return;
+    }
+    if (!sonidoRespaldoTimer) {
+      sonidoRespaldoTimer = setInterval(async () => {
+        if (!state.usuario) return detenerRespaldoSonido();
+        if (state.sse && typeof EventSource === 'function' && state.sse.readyState === EventSource.OPEN) return;
+        try {
+          state.sonido = await api('GET', '/sonido');
+          aplicarVolumenPanel();
+          sincronizarYoutube();
+        } catch {}
+      }, 4000);
+    }
+  }
+
   function sincronizarFlujo(sesionActual) {
-    if (!state.usuario || !sesionActual || sesionActual.estado !== 'activa' || sesionActual.qr_estado !== 'activo') {
+    gestionarRespaldoSonido();
+    if (!state.usuario || !sesionActual || sesionActual.estado !== 'activa') {
       cerrarFlujo();
       return;
     }
@@ -307,7 +342,7 @@
     cerrarFlujo();
     if (typeof EventSource !== 'function') return;
 
-    const es = new EventSource(`/api/sesiones/${encodeURIComponent(idSesion)}/cola/flujo`, { withCredentials: true });
+    const es = new EventSource(`/api/admin/sesiones/${encodeURIComponent(idSesion)}/flujo`, { withCredentials: true });
     state.sse = es;
     state.sseSesionId = idSesion;
 
@@ -365,6 +400,39 @@
       refrescarEnVivo();
     });
 
+    es.addEventListener('sonido', (ev) => {
+      if (state.sse !== es) return;
+      try {
+        const datos = JSON.parse(ev.data);
+        state.sonido = Object.assign({}, state.sonido || {}, datos);
+        if (datos.salida && datos.salida !== 'pantalla_publica') limpiarClaim();
+        aplicarVolumenPanel();
+        sincronizarYoutube();
+        const volTxt = document.getElementById('snd-vol-txt');
+        if (volTxt && typeof datos.volumen === 'number') volTxt.textContent = `${datos.volumen}%`;
+        const sndMute = document.getElementById('snd-mute');
+        if (sndMute) sndMute.textContent = datos.silenciado ? '🔇 Activar sonido' : '🔊 Silenciar';
+        const sndSalida = document.getElementById('snd-salida');
+        if (sndSalida && datos.salida) sndSalida.value = datos.salida;
+        if (state.tab === 'reproduccion') refrescarDisplay();
+      } catch {}
+    });
+
+    es.addEventListener('display_estado', () => {
+      if (state.sse !== es) return;
+      refrescarDisplay();
+    });
+
+    es.addEventListener('incidente_reproductor', (ev) => {
+      if (state.sse !== es) return;
+      try {
+        const datos = JSON.parse(ev.data);
+        const tit = datos.titulo || datos.youtube_video_id || 'la canción actual';
+        const cod = datos.codigo_error || 'error';
+        showToast(`Pantalla pública reportó ${cod} en "${tit}". Usa Saltar o Bloquear si corresponde.`, true);
+      } catch {}
+    });
+
     es.addEventListener('error', () => {
       if (state.sse !== es) return;
       state.ssePerdioConexion = true;
@@ -373,6 +441,89 @@
         state.sseSesionId = null;
       }
     });
+  }
+
+  let claimTimer = null;
+  let leaseVenceTimer = null;
+
+  function limpiarClaim() {
+    state.claimTemporal = null;
+    if (claimTimer) {
+      clearInterval(claimTimer);
+      claimTimer = null;
+    }
+  }
+
+  function limpiarTimersDisplay() {
+    limpiarClaim();
+    if (leaseVenceTimer) {
+      clearTimeout(leaseVenceTimer);
+      leaseVenceTimer = null;
+    }
+  }
+
+  function programarVencimientoLease() {
+    if (leaseVenceTimer) {
+      clearTimeout(leaseVenceTimer);
+      leaseVenceTimer = null;
+    }
+    const d = state.display;
+    if (!state.usuario || !d || !d.lease_vigente || !d.lease_expira_en) return;
+    const diff = new Date(d.lease_expira_en).getTime() - Date.now();
+    const ms = diff > 0 ? diff + 600 : 25_000;
+    leaseVenceTimer = setTimeout(() => { refrescarDisplay(); }, ms);
+  }
+
+  function sincronizarClaimTemporal() {
+    const ct = state.claimTemporal;
+    if (!ct) return;
+    const d = state.display;
+    if (ct.idSesion !== state.sesionId || ct.expiraEnMs <= Date.now() || (d && d.estado_control === 'control_autorizado')) {
+      limpiarClaim();
+      return;
+    }
+    if (!claimTimer) {
+      claimTimer = setInterval(() => {
+        if (!state.claimTemporal || state.claimTemporal.expiraEnMs <= Date.now()) {
+          limpiarClaim();
+          if (state.tab === 'reproduccion') render();
+          return;
+        }
+        const el = document.getElementById('disp-claim-ttl');
+        if (el) {
+          const seg = Math.max(0, Math.ceil((state.claimTemporal.expiraEnMs - Date.now()) / 1000));
+          el.textContent = `Expira en ${seg} s`;
+        }
+      }, 1000);
+    }
+  }
+
+  async function copiarTexto(texto, mensajeOk) {
+    try {
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        await navigator.clipboard.writeText(texto);
+        showToast(mensajeOk);
+        return;
+      }
+    } catch {}
+    const ta = document.createElement('textarea');
+    ta.value = texto;
+    ta.style.cssText = 'position:fixed;left:-9999px;top:0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); showToast(mensajeOk); }
+    catch { showToast('No se pudo copiar automáticamente.', true); }
+    finally { ta.remove(); }
+  }
+
+  async function refrescarDisplay() {
+    if (!state.usuario || !state.sesionId) return;
+    try {
+      state.display = await api('GET', `/sesiones/${encodeURIComponent(state.sesionId)}/display`);
+      sincronizarClaimTemporal();
+      programarVencimientoLease();
+      if (state.tab === 'reproduccion') render();
+    } catch {}
   }
 
   async function cargarPanel() {
@@ -386,6 +537,12 @@
       state.sesionId = activas[0].id_sesion;
       state.panel = await api('GET', `/panel?sesion=${encodeURIComponent(state.sesionId)}`);
     }
+    const sesionDisplay = state.sesionId || (state.panel.sesiones[0] && state.panel.sesiones[0].id_sesion) || null;
+    state.display = sesionDisplay
+      ? await api('GET', `/sesiones/${encodeURIComponent(sesionDisplay)}/display`).catch(() => null)
+      : null;
+    sincronizarClaimTemporal();
+    programarVencimientoLease();
     if (state.tab === 'bloqueos') state.bloqueos = (await api('GET', '/bloqueos')).bloqueos;
     if (state.tab === 'mantenimiento') {
       state.mantenimiento = (state.usuario.rol === 'admin' && state.sesionId)
@@ -566,6 +723,7 @@
     document.getElementById('sel-sesion').addEventListener('change', async (e) => {
       if (!e.target.value) return;
       state.sesionId = e.target.value;
+      limpiarTimersDisplay();
       await cargarPanel();
     });
     document.querySelectorAll('.nav button[data-tab]').forEach((b) => b.addEventListener('click', async () => {
@@ -574,6 +732,8 @@
     }));
     document.getElementById('btn-refrescar').addEventListener('click', () => cargarPanel());
     document.getElementById('btn-salir').addEventListener('click', async () => {
+      detenerRespaldoSonido();
+      limpiarTimersDisplay();
       cerrarFlujo();
       await api('POST', '/auth/logout');
       if (state.ytPlayer && typeof state.ytPlayer.destroy === 'function') { try { state.ytPlayer.destroy(); } catch {} }
@@ -581,6 +741,7 @@
       state.ytVideoCargado = null;
       state.usuario = null;
       state.panel = null;
+      state.display = null;
       render();
     });
 
@@ -646,9 +807,220 @@
     });
   }
 
+  function estadoSalidaSoundPill(sonido, disp) {
+    if (!sonido) return { cls: 'accent', txt: 'Suena en este panel' };
+    if (sonido.salida === 'equipo_local') {
+      return sonido.salida_conectada
+        ? { cls: 'ok', txt: 'Equipo del local conectado' }
+        : { cls: 'err', txt: 'Equipo del local sin conexión' };
+    }
+    if (sonido.salida === 'pantalla_publica') {
+      return disp && disp.lease_vigente
+        ? { cls: 'ok', txt: 'Pantalla pública con control autorizado' }
+        : { cls: 'warn', txt: 'Pantalla pública sin control' };
+    }
+    return { cls: 'accent', txt: 'Suena en este panel' };
+  }
+
+  function badgesDisplay(d) {
+    if (!d) return { conCls: '', conTxt: 'Sin información', ctlCls: '', ctlTxt: 'Sin control' };
+    let conCls = 'warn';
+    let conTxt = 'Pantalla creada · Sin conexión';
+    if (d.sesion_estado !== 'activa') {
+      conCls = 'err';
+      conTxt = 'Sesión cerrada';
+    } else if (d.estado_pantalla === 'pantalla_revocada') {
+      conCls = 'err';
+      conTxt = 'Pantalla revocada';
+    } else if (!d.existe) {
+      conCls = '';
+      conTxt = 'Sin pantalla creada';
+    } else if (d.sse_conectada) {
+      conCls = 'ok';
+      conTxt = 'Pantalla conectada (SSE)';
+    }
+
+    let ctlCls = '';
+    let ctlTxt = 'Sin control';
+    if (d.estado_control === 'control_autorizado') {
+      ctlCls = 'ok';
+      ctlTxt = 'Control autorizado';
+    } else if (d.estado_control === 'control_perdido') {
+      ctlCls = 'err';
+      ctlTxt = 'Control perdido';
+    } else if (d.estado_control === 'control_liberado') {
+      ctlCls = 'warn';
+      ctlTxt = 'Control liberado';
+    }
+    return { conCls, conTxt, ctlCls, ctlTxt };
+  }
+
+  function renderDisplayCardHtml(d) {
+    const badges = badgesDisplay(d);
+    const cerrada = !d || d.sesion_estado !== 'activa';
+    const urlCompleta = d && d.ruta_publica ? `${window.location.origin}${d.ruta_publica}` : '';
+    const ct = state.claimTemporal && state.claimTemporal.idSesion === (d && d.id_sesion) ? state.claimTemporal : null;
+    const ttlSeg = ct ? Math.max(0, Math.ceil((ct.expiraEnMs - Date.now()) / 1000)) : 0;
+    const salidaEsTv = Boolean(state.sonido && state.sonido.salida === 'pantalla_publica');
+    const puedeLiberar = Boolean(d && d.existe && (d.lease_vigente || d.claim_pendiente || d.estado_control === 'control_autorizado' || d.estado_control === 'control_perdido'));
+
+    return `
+      <div class="card mt" id="card-display-publica">
+        <div class="between">
+          <div>
+            <h2>Pantalla Pública (TV)</h2>
+            <p class="muted" style="margin:0">Vista 16:9 para televisor o proyector. El enlace es independiente del QR de clientes.</p>
+          </div>
+          <div class="row">
+            <span id="disp-pill-conexion" class="pill ${badges.conCls}"><span class="dot"></span>${esc(badges.conTxt)}</span>
+            <span id="disp-pill-control" class="pill ${badges.ctlCls}"><span class="dot"></span>${esc(badges.ctlTxt)}</span>
+          </div>
+        </div>
+
+        <div class="display-grid mt">
+          <div class="display-subcard">
+            <h3 style="margin:0">Enlace de visualización</h3>
+            ${cerrada ? '<p class="muted">La sesión está cerrada. Activa una nueva sesión en <strong>Sesiones y QR</strong> para habilitar una pantalla pública.</p>' : (
+              d.existe ? `
+                <div class="display-url-row">
+                  <input id="disp-url" type="text" readonly value="${esc(urlCompleta)}" aria-label="Enlace público del televisor">
+                  <button class="btn sm" id="btn-disp-copiar" type="button">Copiar enlace</button>
+                </div>
+                <div class="row">
+                  <a class="btn sm primary" id="btn-disp-abrir" href="${esc(d.ruta_publica)}" target="_blank" rel="noopener">Abrir pantalla pública</a>
+                  <button class="btn sm" id="btn-disp-regenerar" type="button">Regenerar enlace</button>
+                  <button class="btn sm danger" id="btn-disp-revocar" type="button">Revocar</button>
+                </div>
+              ` : `
+                <p class="muted">${d.estado_pantalla === 'pantalla_revocada'
+                  ? 'El enlace anterior fue revocado y dejó de responder. Crea uno nuevo cuando lo necesites.'
+                  : 'Aún no has creado un enlace público para esta sesión.'}</p>
+                <div class="row">
+                  <button class="btn primary" id="btn-disp-crear" type="button">${d.estado_pantalla === 'pantalla_revocada' ? 'Crear nuevo enlace' : 'Crear pantalla pública'}</button>
+                </div>
+              `
+            )}
+          </div>
+
+          <div class="display-subcard">
+            <h3 style="margin:0">Autorización de audio y control del TV</h3>
+            <p class="muted" style="margin:0">Solo un televisor autorizado puede reproducir audio y reportar el avance de canciones. El código temporal debe introducirse en la pantalla pública.</p>
+            ${!cerrada && !salidaEsTv ? `
+              <div class="row">
+                <span class="pill warn"><span class="dot"></span>La salida actual no apunta al TV</span>
+                <button class="btn sm" id="btn-disp-activar-salida" type="button">Cambiar salida a pantalla pública</button>
+              </div>
+            ` : ''}
+            ${!cerrada ? `
+              <div class="row">
+                <button class="btn primary" id="btn-disp-claim" type="button" ${d.existe ? '' : 'disabled'}>Generar código de vinculación</button>
+                <button class="btn warn" id="btn-disp-liberar" type="button" ${puedeLiberar ? '' : 'disabled'}>Liberar control</button>
+              </div>
+            ` : ''}
+            ${ct && ttlSeg > 0 ? `
+              <div class="claim-box" id="disp-claim-box">
+                <div class="between">
+                  <strong style="font-size:.86rem">Código temporal (un solo uso)</strong>
+                  <span class="muted" id="disp-claim-ttl">Expira en ${ttlSeg} s</span>
+                </div>
+                <div class="claim-code mt" id="disp-claim-code">${esc(ct.codigo)}</div>
+                <p class="muted" style="margin:8px 0">Ingrésalo en <em>Activar reproducción y audio en pantalla</em> en el TV. No se guarda en almacenamiento local.</p>
+                <div class="row">
+                  <button class="btn sm" id="btn-disp-copiar-claim" type="button">Copiar código</button>
+                  <button class="btn sm" id="btn-disp-ocultar-claim" type="button">Ocultar</button>
+                </div>
+              </div>
+            ` : ''}
+          </div>
+        </div>
+      </div>`;
+  }
+
+  function enlazarDisplayCard() {
+    const idSesion = state.sesionId;
+    if (!idSesion) return;
+    const bCrear = document.getElementById('btn-disp-crear');
+    if (bCrear) bCrear.addEventListener('click', async () => {
+      try {
+        state.display = await api('POST', `/sesiones/${encodeURIComponent(idSesion)}/display`, {});
+        showToast('Pantalla pública lista');
+        render();
+      } catch (e) { showToast(e.message, true); }
+    });
+    const bCopiar = document.getElementById('btn-disp-copiar');
+    if (bCopiar) bCopiar.addEventListener('click', () => {
+      const inp = document.getElementById('disp-url');
+      if (inp) copiarTexto(inp.value, 'Enlace público copiado');
+    });
+    const bRegen = document.getElementById('btn-disp-regenerar');
+    if (bRegen) bRegen.addEventListener('click', async () => {
+      try {
+        limpiarClaim();
+        state.display = await api('POST', `/sesiones/${encodeURIComponent(idSesion)}/display/regenerar`, {});
+        programarVencimientoLease();
+        showToast('Enlace regenerado; el anterior quedó revocado');
+        render();
+      } catch (e) { showToast(e.message, true); }
+    });
+    const bRev = document.getElementById('btn-disp-revocar');
+    if (bRev) bRev.addEventListener('click', async () => {
+      try {
+        limpiarClaim();
+        state.display = await api('DELETE', `/sesiones/${encodeURIComponent(idSesion)}/display`);
+        programarVencimientoLease();
+        showToast('Pantalla pública revocada');
+        render();
+      } catch (e) { showToast(e.message, true); }
+    });
+    const bActSal = document.getElementById('btn-disp-activar-salida');
+    if (bActSal) bActSal.addEventListener('click', async () => {
+      try {
+        state.sonido = await api('PUT', '/sonido', { salida: 'pantalla_publica' });
+        aplicarVolumenPanel();
+        showToast('Salida cambiada a pantalla pública');
+        await cargarPanel();
+      } catch (e) { showToast(e.message, true); }
+    });
+    const bClaim = document.getElementById('btn-disp-claim');
+    if (bClaim) bClaim.addEventListener('click', async () => {
+      try {
+        const res = await api('POST', `/sesiones/${encodeURIComponent(idSesion)}/display/autorizar-control`, {});
+        state.claimTemporal = {
+          idSesion,
+          codigo: res.claim_code,
+          expiraEnMs: Date.now() + ((Number(res.ttl_segundos) || 120) * 1000),
+        };
+        await refrescarDisplay();
+        showToast('Código temporal generado');
+      } catch (e) { showToast(e.message, true); }
+    });
+    const bCopClaim = document.getElementById('btn-disp-copiar-claim');
+    if (bCopClaim) bCopClaim.addEventListener('click', () => {
+      if (state.claimTemporal) copiarTexto(state.claimTemporal.codigo, 'Código temporal copiado');
+    });
+    const bOcultarClaim = document.getElementById('btn-disp-ocultar-claim');
+    if (bOcultarClaim) bOcultarClaim.addEventListener('click', () => {
+      limpiarClaim();
+      render();
+    });
+    const bLib = document.getElementById('btn-disp-liberar');
+    if (bLib) bLib.addEventListener('click', async () => {
+      try {
+        await api('POST', `/sesiones/${encodeURIComponent(idSesion)}/display/liberar-control`, {});
+        limpiarClaim();
+        showToast('Control del televisor liberado');
+        await refrescarDisplay();
+      } catch (e) { showToast(e.message, true); }
+    });
+  }
+
   function renderReproduccion(cont, p, rep) {
-    if (!rep) { cont.innerHTML = '<div class="card"><p class="muted">No hay ninguna sesión activa. Crea y activa una sesión en <strong>Sesiones y QR</strong> para iniciar la reproducción.</p></div>'; return; }
+    if (!rep) {
+      cont.innerHTML = `<div class="card"><p class="muted">No hay ninguna sesión activa. Crea y activa una sesión en <strong>Sesiones y QR</strong> para iniciar la reproducción.</p></div>${state.display ? renderDisplayCardHtml(state.display) : ''}`;
+      return;
+    }
     const actual = rep.actual;
+    const pillSnd = estadoSalidaSoundPill(state.sonido, state.display);
     cont.innerHTML = `
       <div class="grid-2">
         <div class="card">
@@ -678,8 +1050,7 @@
             <div class="mt" style="padding-top:14px;border-top:1px solid var(--line)">
               <div class="between">
                 <h3 style="margin:0">Sistema de sonido del local</h3>
-                <span class="pill ${state.sonido.salida === 'equipo_local' ? (state.sonido.salida_conectada ? 'ok' : 'err') : 'accent'}"><span class="dot"></span>${
-                  state.sonido.salida === 'equipo_local' ? (state.sonido.salida_conectada ? 'Equipo del local conectado' : 'Equipo del local sin conexión') : 'Suena en este panel'}</span>
+                <span class="pill ${pillSnd.cls}"><span class="dot"></span>${esc(pillSnd.txt)}</span>
               </div>
               <div class="row mt">
                 <button class="btn sm" id="snd-mute" title="Silenciar o activar el sonido">${state.sonido.silenciado ? '🔇 Activar sonido' : '🔊 Silenciar'}</button>
@@ -690,10 +1061,11 @@
                 <select id="snd-salida" style="flex:1;min-width:180px">
                   <option value="panel" ${state.sonido.salida === 'panel' ? 'selected' : ''}>Salida: este panel</option>
                   <option value="equipo_local" ${state.sonido.salida === 'equipo_local' ? 'selected' : ''}>Salida: equipo del local (/sonido)</option>
+                  <option value="pantalla_publica" ${state.sonido.salida === 'pantalla_publica' ? 'selected' : ''}>Salida: pantalla pública (TV)</option>
                 </select>
                 <a class="btn sm" href="/sonido" target="_blank" rel="noopener">Abrir salida del local</a>
               </div>
-              <p class="muted" style="margin:8px 0 0">Abre <code>/sonido</code> en el equipo conectado al amplificador. El volumen, el silencio y la reproducción se controlan desde aquí.</p>
+              <p class="muted" style="margin:8px 0 0">Solo la salida elegida reproduce el audio del local (este panel, <code>/sonido</code> o la pantalla pública).</p>
             </div>` : ''}
         </div>
 
@@ -719,7 +1091,8 @@
               ${esc(h.cancion.titulo)} · <strong>${esc(h.resultado)}</strong> (${h.fuente === 'solicitud' ? 'solicitud' : 'lista'})
             </div>`).join('') || '<p class="muted">Aún no hay reproducciones registradas.</p>'}
         </div>
-      </div>`;
+      </div>
+      ${renderDisplayCardHtml(state.display)}`;
 
     const tog = document.getElementById('rep-toggle');
     if (tog) tog.addEventListener('click', () => accionRep(tog.dataset.acc));
@@ -747,6 +1120,7 @@
       vol.addEventListener('change', () => guardarSonido({ volumen: Number(vol.value) }));
       document.getElementById('snd-salida').addEventListener('change', (e) => guardarSonido({ salida: e.target.value }));
     }
+    enlazarDisplayCard();
     cont.querySelectorAll('[data-bloq-yt]').forEach((b) => b.addEventListener('click', async () => {
       const datos = await pedirBloqueoModal(b.dataset.bloqTit);
       if (!datos) return;

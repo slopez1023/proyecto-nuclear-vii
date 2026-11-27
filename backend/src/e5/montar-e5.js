@@ -15,6 +15,8 @@ const { crearReproductor } = require('./reproductor');
 const { crearPlanificador } = require('./planificador');
 const { crearRouterE5 } = require('./rutas-e5');
 const { crearBonus } = require('./bonus');
+const { crearDisplayServicio } = require('./display');
+const { montarRutasPublicas } = require('./rutas-public');
 const { manejar, ErrorApi, idNumero } = require('./comun-e5');
 const { leerDispositivo } = require('../rutas-e4');
 const repo5 = require('./repositorio-e5');
@@ -43,6 +45,7 @@ function montarE5(app, { pool, youtube, almacenEventos, ahora = Date.now, config
     intervaloRespaldoMs: config.intervaloRespaldoMs || 24 * 60 * 60 * 1000,
     carpetaRespaldos: config.carpetaRespaldos,
   });
+  const display = crearDisplayServicio({ pool, flujo: e4.flujo, ahora, emisor });
   const planificador = crearPlanificador({
     pool, sesionesAdmin, reproductor, bonus, ahora, intervaloMs: config.intervaloPlanificadorMs || 15_000,
   });
@@ -65,9 +68,10 @@ function montarE5(app, { pool, youtube, almacenEventos, ahora = Date.now, config
   }));
 
   const router = crearRouterE5({
-    pool, youtube, auth, sesionesAdmin, bloqueos, listas, reproductor, bonus, conectividad: e4.conectividad, ahora,
+    pool, youtube, auth, sesionesAdmin, bloqueos, listas, reproductor, bonus, display, flujo: e4.flujo, conectividad: e4.conectividad, ahora,
   });
   app.use('/api/admin', router);
+  montarRutasPublicas(app, { display, reproductor, bonus, flujo: e4.flujo });
 
   // Panel web del E5 (administrador y DJ), separado del cliente de respaldo (public/index.html)
   const dirAdmin = path.join(__dirname, '..', '..', 'public', 'admin');
@@ -75,7 +79,7 @@ function montarE5(app, { pool, youtube, almacenEventos, ahora = Date.now, config
   app.get('/sonido', (_req, res) => res.sendFile(path.join(dirAdmin, 'sonido.html')));
   app.use('/admin', express.static(dirAdmin));
 
-  const servicios = { auth, sesionesAdmin, bloqueos, listas, reproductor, bonus, planificador, emisor };
+  const servicios = { auth, sesionesAdmin, bloqueos, listas, reproductor, bonus, display, planificador, emisor };
   app.locals.e5 = servicios;
   return servicios;
 }

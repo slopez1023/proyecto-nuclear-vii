@@ -24,6 +24,9 @@ const TIPOS_E5 = new Set([
   'lista_actualizada', 'mantenimiento_realizado', 'sesion_creada',
   // funcionalidades opcionales (bonificación)
   'voto_cambiado', 'respaldo_listas_generado', 'sonido_actualizado',
+  // pantalla pública (e5_display)
+  'display_creado', 'display_regenerado', 'display_revocado',
+  'display_control_autorizado', 'display_control_reclamado', 'display_control_liberado', 'display_error_reproduccion',
 ]);
 
 const actorDe = (usuario) => (!usuario ? 'sistema' : usuario.rol === 'admin' ? 'administrador' : 'dj');

@@ -44,10 +44,10 @@ function crearFlujo({
   }
 
   /** Por qué una sesión ya no admite participación (null = sigue vigente). Mismos motivos que los códigos 404/410. */
-  const motivoCierre = (sesion) => {
+  const motivoCierre = (sesion, { ignorarQrInactivo = false } = {}) => {
     if (!sesion) return 'sesion_inexistente';
     if (sesion.estado !== 'activa') return 'sesion_cerrada';
-    if (sesion.qr_estado !== 'activo') return 'qr_desactivado';
+    if (!ignorarQrInactivo && sesion.qr_estado !== 'activo') return 'qr_desactivado';
     return null;
   };
 
@@ -57,9 +57,12 @@ function crearFlujo({
    * `estado` lo ignora.
    */
   function avisarCierre(idSesion, lista, motivo) {
-    const datos = JSON.stringify({ sesion_id: idSesion, motivo });
+    const datosBase = { sesion_id: idSesion, motivo };
     for (const con of lista) {
-      escribir(con, `event: sesion_cerrada\ndata: ${datos}\n\n`);
+      const carga = con.proyectarEvento ? con.proyectarEvento('sesion_cerrada', datosBase) : datosBase;
+      if (carga !== null && carga !== undefined) {
+        escribir(con, `event: sesion_cerrada\ndata: ${JSON.stringify(carga)}\n\n`);
+      }
       if (!con.res.writableEnded) con.res.end();
     }
   }
@@ -68,8 +71,11 @@ function crearFlujo({
   async function verificarSesiones() {
     for (const idSesion of [...conexiones.keys()]) {
       try {
-        const motivo = motivoCierre(await repo.obtenerSesion(pool, idSesion));
-        if (motivo) avisarCierre(idSesion, [...(conexiones.get(idSesion) || [])], motivo);
+        const sesion = await repo.obtenerSesion(pool, idSesion);
+        for (const con of [...(conexiones.get(idSesion) || [])]) {
+          const motivo = motivoCierre(sesion, { ignorarQrInactivo: con.ignorarQrInactivo });
+          if (motivo) avisarCierre(idSesion, [con], motivo);
+        }
       } catch (err) {
         console.error(`[flujo] no se pudo verificar la sesión ${idSesion}:`, err.message);
       }
@@ -83,12 +89,25 @@ function crearFlujo({
       const lista = destinatarios();
       if (lista.length === 0) return;
       const sesion = await repo.obtenerSesion(pool, idSesion);
-      const cierre = motivoCierre(sesion);
-      if (cierre) return avisarCierre(idSesion, lista, cierre);
-      const base = await cola.estadoBase(pool, sesion);
+      const activas = [];
       for (const con of lista) {
+        const cierre = motivoCierre(sesion, { ignorarQrInactivo: con.ignorarQrInactivo });
+        if (cierre) avisarCierre(idSesion, [con], cierre);
+        else activas.push(con);
+      }
+      if (activas.length === 0) return;
+      const necesitaBase = activas.some((c) => !c.proyectarEvento);
+      const base = necesitaBase ? await cola.estadoBase(pool, sesion) : null;
+      for (const con of activas) {
         if (con.res.writableEnded || con.res.destroyed) continue;
-        escribir(con, mensajeEstado(await cola.personalizar(pool, base, con.idDispositivo)));
+        if (con.proyectarEvento) {
+          const carga = await con.proyectarEvento('estado', null, { sesion });
+          if (carga !== null && carga !== undefined) {
+            escribir(con, `event: estado\ndata: ${JSON.stringify(carga)}\n\n`);
+          }
+        } else {
+          escribir(con, mensajeEstado(await cola.personalizar(pool, base, con.idDispositivo)));
+        }
       }
     }).catch((err) => console.error(`[flujo] no se pudo enviar el estado de ${idSesion}:`, err.message));
     pendientes.set(idSesion, siguiente);
@@ -118,15 +137,19 @@ function crearFlujo({
   function notificarEvento(idSesion, nombreEvento, datos = {}) {
     const lista = [...(conexiones.get(idSesion) || [])];
     if (lista.length === 0) return;
-    const carga = JSON.stringify({ sesion_id: idSesion, ...datos });
-    for (const con of lista) escribir(con, `event: ${nombreEvento}\ndata: ${carga}\n\n`);
+    const cargaBase = { sesion_id: idSesion, ...datos };
+    for (const con of lista) {
+      const carga = con.proyectarEvento ? con.proyectarEvento(nombreEvento, cargaBase) : cargaBase;
+      if (carga === null || carga === undefined) continue;
+      escribir(con, `event: ${nombreEvento}\ndata: ${JSON.stringify(carga)}\n\n`);
+    }
   }
 
   /**
    * Abre el flujo. La sesión y el UUID ya se validaron (errores como JSON normal antes de llegar aquí).
    * Solo las conexiones con X-Dispositivo-Id cuentan como dispositivo activo.
    */
-  function abrir(req, res, { sesion, uuid, idDispositivo }) {
+  function abrir(req, res, { sesion, uuid, idDispositivo, ignorarQrInactivo = false, proyectarEvento = null, tipo = null }) {
     res.writeHead(200, {
       'Content-Type': 'text/event-stream; charset=utf-8',
       'Cache-Control': 'no-cache',
@@ -134,7 +157,16 @@ function crearFlujo({
       'X-Accel-Buffering': 'no',
     });
     res.write(`retry: ${RETRY_MS}\n\n`);
-    const con = { res, uuid, idDispositivo, idSesion: sesion.id_sesion, idEstablecimiento: sesion.id_establecimiento };
+    const con = {
+      res,
+      uuid,
+      idDispositivo,
+      idSesion: sesion.id_sesion,
+      idEstablecimiento: sesion.id_establecimiento,
+      ignorarQrInactivo: Boolean(ignorarQrInactivo),
+      proyectarEvento: typeof proyectarEvento === 'function' ? proyectarEvento : null,
+      tipo: tipo || null,
+    };
     if (!conexiones.has(con.idSesion)) conexiones.set(con.idSesion, new Set());
     conexiones.get(con.idSesion).add(con);
     if (uuid) {
@@ -143,6 +175,10 @@ function crearFlujo({
     }
     // Estado inicial inmediato (en la misma cola que los avisos, para respetar el orden de versiones).
     encolar(con.idSesion, () => [con]);
+    if (con.tipo === 'pantalla_publica' && !apagado) {
+      const n = contarConexionesTipo(con.idSesion, 'pantalla_publica');
+      notificarEvento(con.idSesion, 'display_estado', { sse_conectada: n > 0, sse_conexiones: n });
+    }
 
     let cerrada = false;
     const cerrar = () => {
@@ -157,6 +193,10 @@ function crearFlujo({
       if (uuid) {
         conectividad.desconectar(con.idSesion, uuid);
         if (!apagado) registrar(repo.registrarDesconexion(pool, idDispositivo, con.idSesion, ahora()));
+      }
+      if (con.tipo === 'pantalla_publica' && !apagado) {
+        const n = contarConexionesTipo(con.idSesion, 'pantalla_publica');
+        notificarEvento(con.idSesion, 'display_estado', { sse_conectada: n > 0, sse_conexiones: n });
       }
     };
     req.on('close', cerrar);
@@ -186,6 +226,21 @@ function crearFlujo({
 
   const totalConexiones = () => [...conexiones.values()].reduce((n, s) => n + s.size, 0);
 
+  const contarConexionesTipo = (idSesion, tipo) => {
+    let n = 0;
+    for (const con of conexiones.get(idSesion) || []) {
+      if (con.tipo === tipo && !con.res.writableEnded && !con.res.destroyed) n++;
+    }
+    return n;
+  };
+
+  function cerrarConexionesTipo(idSesion, tipo) {
+    const lista = [...(conexiones.get(idSesion) || [])].filter((c) => c.tipo === tipo);
+    for (const con of lista) {
+      if (!con.res.writableEnded) con.res.end();
+    }
+  }
+
   function avisarConexiones() {
     const total = totalConexiones();
     for (let i = esperasConexiones.length - 1; i >= 0; i--) {
@@ -199,7 +254,11 @@ function crearFlujo({
     return new Promise((resolve) => esperasConexiones.push({ n, resolve }));
   }
 
-  return { abrir, notificarSesion, notificarEstablecimiento, notificarEvento, ping, verificarSesiones, cerrar, inactivo, totalConexiones, esperarConexiones };
+  return {
+    abrir, notificarSesion, notificarEstablecimiento, notificarEvento,
+    ping, verificarSesiones, cerrar, inactivo, totalConexiones, esperarConexiones,
+    contarConexionesTipo, cerrarConexionesTipo,
+  };
 }
 
 module.exports = { crearFlujo, RETRY_MS };

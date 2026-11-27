@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#090a0f">
+  <title>PONGA PUES — Pantalla Pública</title>
+  <link rel="icon" type="image/png" href="/ponga-logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/public-assets/display.css">
+</head>
+<body>
+  <div id="app" class="tv-shell">
+    <header class="tv-header">
+      <div class="tv-brand">
+        <div class="tv-logo-wrap">
+          <img id="tv-logo-img" class="tv-logo-img" src="/ponga-logo.png" alt="PONGA PUES">
+        </div>
+        <div class="tv-est">
+          <span class="tv-eyebrow">Pantalla Pública</span>
+          <h1 id="tv-est-nombre" class="tv-est-nombre">Cargando establecimiento…</h1>
+        </div>
+      </div>
+      <div class="tv-status-group">
+        <span id="tv-audio-pill" class="tv-pill muted"><span class="dot"></span><span id="tv-audio-txt">Audio silenciado</span></span>
+        <button id="btn-activar-audio" class="tv-btn-audio" type="button" hidden>Activar sonido en pantalla</button>
+        <span id="tv-estado-pill" class="tv-pill accent"><span class="dot"></span><span id="tv-estado-txt">Cargando…</span></span>
+        <span id="tv-sse-pill" class="tv-pill ok"><span class="dot"></span><span id="tv-sse-txt">Conectado</span></span>
+      </div>
+    </header>
+
+    <main class="tv-stage">
+      <section class="tv-video-wrap">
+        <div id="yt-display-slot" class="tv-yt-slot"></div>
+        <div id="tv-overlay" class="tv-overlay" hidden>
+          <div class="tv-overlay-card">
+            <div id="tv-overlay-badge" class="tv-overlay-badge">En espera</div>
+            <h2 id="tv-overlay-title" class="tv-overlay-title">Cargando…</h2>
+            <p id="tv-overlay-sub" class="tv-overlay-sub"></p>
+          </div>
+        </div>
+      </section>
+
+      <section id="tv-now-bar" class="tv-now-bar">
+        <div class="tv-now-meta">
+          <span id="tv-now-fuente" class="tv-now-tag">Ahora suena</span>
+          <div id="tv-now-titulo" class="tv-now-titulo">Esperando reproducción…</div>
+          <div id="tv-now-artista" class="tv-now-artista"></div>
+        </div>
+        <div id="tv-now-votos" class="tv-now-votos" hidden></div>
+      </section>
+    </main>
+
+    <footer class="tv-queue-strip">
+      <div class="tv-queue-head">
+        <span class="tv-queue-title">A continuación</span>
+        <span id="tv-queue-count" class="tv-queue-count"></span>
+      </div>
+      <div id="tv-queue-list" class="tv-queue-list">
+        <div class="tv-queue-empty">La pista está libre — Esperando próximas canciones</div>
+      </div>
+    </footer>
+  </div>
+
+  <div id="claim-modal" class="tv-modal-backdrop" hidden role="dialog" aria-modal="true" aria-labelledby="claim-title">
+    <form id="claim-form" class="tv-modal-card">
+      <div class="tv-overlay-badge">Autorización de control</div>
+      <h2 id="claim-title" class="tv-modal-title">Activar reproducción y audio en pantalla</h2>
+      <p class="tv-modal-sub">Ingresa el código temporal de un solo uso generado desde el panel DJ.</p>
+      <input id="claim-input" class="tv-claim-input" type="password" autocomplete="off" spellcheck="false" required placeholder="Código de autorización del DJ">
+      <p id="claim-error" class="tv-claim-error" hidden></p>
+      <div class="tv-modal-actions">
+        <button id="claim-cancel" class="tv-btn-sec" type="button">Cancelar</button>
+        <button id="claim-submit" class="tv-btn-audio" type="submit">Confirmar control</button>
+      </div>
+    </form>
+  </div>
+
+  <script src="https://www.youtube.com/iframe_api"></script>
+  <script src="/public-assets/display.js"></script>
+</body>
+</html>

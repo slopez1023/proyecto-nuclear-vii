@@ -155,6 +155,7 @@ function crearSesionesAdmin({ pool, flujo, ahora, emisor, publicBaseUrl = 'http:
       await repo5.asegurarEstadoReproduccion(client, idSesion, t);
       await repo5.actualizarEstadoReproduccion(client, idSesion, {
         estado: 'detenida', pausada_en: null, lista_cancion: null, lista_inicio_en: null,
+        tiempo_pausado_ms: 0, reproduccion_uid: null,
       }, t);
       await repo5.cerrarJornada(client, idSesion, origen, t, retiradas.length);
       if (origen !== 'horario') {

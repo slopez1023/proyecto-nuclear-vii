@@ -6,7 +6,11 @@
    * Solo suena cuando el DJ elige la salida "equipo_local" en el panel; si no, queda en espera.
    */
   const root = document.getElementById('root');
-  const S = { usuario: null, sonido: null, panel: null, player: null, vid: null, listo: false, desbloqueado: false, avanzando: false, error: '' };
+  const S = {
+    usuario: null, sonido: null, panel: null, player: null, vid: null,
+    listo: false, desbloqueado: false, avanzando: false, error: '',
+    sse: null, sseSesionId: null,
+  };
   let timer = null;
 
   const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -27,8 +31,25 @@
 
   window.onYouTubeIframeAPIReady = function () { S.listo = true; sincronizar(); };
 
+  function cerrarSse() {
+    if (S.sse) {
+      try { S.sse.close(); } catch {}
+    }
+    S.sse = null;
+    S.sseSesionId = null;
+  }
+
+  function detenerYSilenciar() {
+    S.avanzando = false;
+    if (!S.player) return;
+    try { if (typeof S.player.mute === 'function') S.player.mute(); } catch {}
+    try { if (typeof S.player.pauseVideo === 'function') S.player.pauseVideo(); } catch {}
+  }
+
   function renderLogin() {
     if (timer) { clearInterval(timer); timer = null; }
+    cerrarSse();
+    detenerYSilenciar();
     S.player = null;
     S.vid = null;
     root.innerHTML = `
@@ -80,9 +101,12 @@
     const rep = S.panel && S.panel.reproduccion;
     const actual = rep && rep.actual;
     const activa = S.sonido && S.sonido.salida === 'equipo_local';
+    let textoEspera = 'En espera (el DJ usa la salida del panel)';
+    if (activa) textoEspera = 'Esta salida está activa';
+    else if (S.sonido && S.sonido.salida === 'pantalla_publica') textoEspera = 'En espera (audio en pantalla pública)';
     $('st-local').textContent = S.panel && S.panel.establecimiento ? S.panel.establecimiento.nombre : 'PONGA';
     $('st-pill').className = `pill ${activa ? 'ok' : 'warn'}`;
-    $('st-pill-txt').textContent = activa ? 'Esta salida está activa' : 'En espera (el DJ usa la salida del panel)';
+    $('st-pill-txt').textContent = textoEspera;
     $('st-vol').textContent = `Volumen ${S.sonido ? (S.sonido.silenciado ? 'silenciado' : S.sonido.volumen + '%') : '—'}`;
     $('st-caja').style.opacity = activa ? '1' : '.35';
     $('st-titulo').textContent = actual ? actual.cancion.titulo : 'Sin canción sonando';
@@ -125,7 +149,7 @@
     const vid = rep && rep.actual && rep.actual.cancion ? rep.actual.cancion.youtube_video_id : null;
     const activa = S.sonido && S.sonido.salida === 'equipo_local' && S.desbloqueado;
     if (!vid || !activa) {
-      if (S.player && typeof S.player.pauseVideo === 'function') { try { S.player.pauseVideo(); } catch {} }
+      detenerYSilenciar();
       return;
     }
     if (!S.player) {
@@ -153,12 +177,65 @@
     else if (rep.estado_reproduccion === 'reproduciendo') S.player.playVideo();
   }
 
+  function sincronizarSse() {
+    const rep = S.panel && S.panel.reproduccion;
+    const idSesion = rep && rep.sesion_estado === 'activa' ? rep.id_sesion : null;
+    if (!S.usuario || !idSesion) {
+      cerrarSse();
+      return;
+    }
+    if (S.sse && S.sseSesionId === idSesion && S.sse.readyState !== EventSource.CLOSED) {
+      return;
+    }
+    cerrarSse();
+    if (typeof EventSource !== 'function') return;
+
+    const es = new EventSource(`/api/admin/sesiones/${encodeURIComponent(idSesion)}/flujo`, { withCredentials: true });
+    S.sse = es;
+    S.sseSesionId = idSesion;
+
+    es.addEventListener('sonido', (ev) => {
+      if (S.sse !== es) return;
+      try {
+        const datos = JSON.parse(ev.data);
+        S.sonido = Object.assign({}, S.sonido || {}, datos);
+        if (S.sonido.salida !== 'equipo_local') detenerYSilenciar();
+        actualizarVista();
+        sincronizar();
+      } catch {}
+    });
+
+    es.addEventListener('estado', () => {
+      if (S.sse === es) tick();
+    });
+
+    es.addEventListener('reproductor', () => {
+      if (S.sse === es) tick();
+    });
+
+    es.addEventListener('sesion_cerrada', () => {
+      if (S.sse !== es) return;
+      cerrarSse();
+      detenerYSilenciar();
+      tick();
+    });
+
+    es.addEventListener('error', () => {
+      if (S.sse !== es) return;
+      if (es.readyState === EventSource.CLOSED) {
+        S.sse = null;
+        S.sseSesionId = null;
+      }
+    });
+  }
+
   async function tick() {
     try {
       const [sonido, panel] = await Promise.all([api('GET', '/sonido'), api('GET', '/panel')]);
       S.sonido = sonido;
       S.panel = panel;
       api('POST', '/sonido/latido').catch(() => {});
+      sincronizarSse();
       actualizarVista();
       sincronizar();
     } catch (err) {

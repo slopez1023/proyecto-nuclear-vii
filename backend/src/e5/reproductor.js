@@ -12,11 +12,14 @@
  *     `e5_estado_reproduccion` y se inserta en `reproduccion` al terminar; así los dispositivos con intervalo
  *     agotado pueden pedir la primera canción nueva sin quedar bloqueados.
  */
+const crypto = require('node:crypto');
 const repo4 = require('../db/repositorio');
 const repo5 = require('./repositorio-e5');
 const { ErrorApi, idTexto, iso, cancionJson } = require('./comun-e5');
 
 const CODIGO_SALTADA = 'saltada_por_operador';
+const YT_ERROR_REGEX = /^yt_error_(2|5|100|101|150)$/;
+const TOLERANCIA_ENDED_MS = 5_000;
 
 function crearReproductor({ pool, cola, flujo, ahora, emisor }) {
   const notificar = (idSesion) => {
@@ -96,23 +99,28 @@ function crearReproductor({ pool, cola, flujo, ahora, emisor }) {
     const bloqueadas = await repo5.idsBloqueados(client, idEst, t);
     const nuevaSol = await tomarSiguienteSolicitud(client, idEst, sesion.id_sesion, bloqueadas);
     if (nuevaSol) {
+      const reproduccionUid = crypto.randomUUID();
       await repo5.actualizarEstadoReproduccion(client, sesion.id_sesion, {
         estado: 'reproduciendo', pausada_en: null, lista_cancion: null, lista_inicio_en: null,
+        tiempo_pausado_ms: 0, reproduccion_uid: reproduccionUid,
       }, t);
       return { modo: 'solicitud', actual: nuevaSol };
     }
     const cfg = await repo5.obtenerConfig(client, idEst);
     const deLista = await seleccionarDeLista(client, idEst, estadoRep, cfg || {});
     if (deLista) {
+      const reproduccionUid = crypto.randomUUID();
       await repo5.actualizarEstadoReproduccion(client, sesion.id_sesion, {
         estado: 'reproduciendo', pausada_en: null,
         lista_id: deLista.id_lista, lista_posicion: deLista.posicion,
         lista_cancion: deLista.cancion.id_cancion, lista_inicio_en: t,
+        tiempo_pausado_ms: 0, reproduccion_uid: reproduccionUid,
       }, t);
       return { modo: 'lista', lista: deLista, inicio_en: t };
     }
     await repo5.actualizarEstadoReproduccion(client, sesion.id_sesion, {
       estado: 'en_espera', pausada_en: null, lista_cancion: null, lista_inicio_en: null,
+      tiempo_pausado_ms: 0, reproduccion_uid: null,
     }, t);
     return { modo: 'en_espera', origen };
   }
@@ -155,6 +163,7 @@ function crearReproductor({ pool, cola, flujo, ahora, emisor }) {
     if (enCurso) {
       actual = {
         fuente: 'solicitud',
+        reproduccion_uid: estRep.reproduccion_uid || null,
         id_reproduccion: idTexto('REP', enCurso.id_reproduccion),
         id_solicitud: idTexto('SOL', enCurso.id_solicitud),
         total_votos: enCurso.total_votos,
@@ -164,6 +173,7 @@ function crearReproductor({ pool, cola, flujo, ahora, emisor }) {
     } else if (estRep.lista_cancion && (estRep.estado === 'reproduciendo' || estRep.estado === 'pausada')) {
       actual = {
         fuente: 'lista_defecto',
+        reproduccion_uid: estRep.reproduccion_uid || null,
         id_lista: estRep.lista_id,
         lista_nombre: estRep.lista_nombre,
         posicion_lista: estRep.lista_posicion,
@@ -244,7 +254,11 @@ function crearReproductor({ pool, cola, flujo, ahora, emisor }) {
       await repo5.asegurarEstadoReproduccion(client, idSesion, t);
       const estRep = await repo5.obtenerEstadoReproduccion(client, idSesion, { bloquear: true });
       if (estRep.estado !== 'pausada') throw new ErrorApi(409, 'no_esta_pausada', 'La reproducción no está pausada.');
-      await repo5.actualizarEstadoReproduccion(client, idSesion, { estado: 'reproduciendo', pausada_en: null }, t);
+      const deltaPausa = estRep.pausada_en ? Math.max(0, t - Number(estRep.pausada_en)) : 0;
+      const tiempoPausado = (Number(estRep.tiempo_pausado_ms) || 0) + deltaPausa;
+      await repo5.actualizarEstadoReproduccion(client, idSesion, {
+        estado: 'reproduciendo', pausada_en: null, tiempo_pausado_ms: tiempoPausado,
+      }, t);
       await repo5.registrar(client, { idEst, idUsuario: usuario.id_usuario, accion: 'reproduccion_reanudada', detalle: { id_sesion: idSesion }, ahora: t });
     });
     emisor.emitir({ tipo: 'reproduccion_reanudada', sesion_id: idSesion, id_establecimiento: idEst, usuario, datos_evento: {} });
@@ -347,6 +361,173 @@ function crearReproductor({ pool, cola, flujo, ahora, emisor }) {
     }
   }
 
+  /** Reporte de fin o incidente desde la pantalla pública líder con lease exclusivo vigente. */
+  async function avanzarDesdeDisplay({ displayToken, controlToken, body, verificarControlEnTx }) {
+    const b = body && typeof body === 'object' ? body : {};
+    const tipo = b.tipo;
+    if (tipo !== 'ended' && tipo !== 'error') {
+      throw new ErrorApi(400, 'tipo_invalido', 'tipo debe ser "ended" o "error".');
+    }
+    const uid = typeof b.reproduccion_uid === 'string' ? b.reproduccion_uid.trim() : '';
+    if (!uid || uid.length > 80) {
+      throw new ErrorApi(400, 'reproduccion_uid_invalido', 'Falta reproduccion_uid válido.');
+    }
+    if (tipo === 'error') {
+      if (typeof b.codigo_error !== 'string' || !YT_ERROR_REGEX.test(b.codigo_error)) {
+        throw new ErrorApi(400, 'codigo_error_invalido', 'Código de error de reproductor no reconocido.');
+      }
+    }
+
+    const t = ahora();
+    const res = await repo4.conTransaccion(pool, async (client) => {
+      const d = await verificarControlEnTx(client, displayToken, controlToken, t);
+      const idEst = d.id_establecimiento;
+      const idSesion = d.id_sesion;
+      const sesion = await verificarSesionDeEst(client, idEst, idSesion);
+      await repo5.asegurarConfig(client, idEst, t);
+      await repo5.asegurarEstadoReproduccion(client, idSesion, t);
+      await repo4.bloquearEstablecimientoYSesion(client, idEst, idSesion);
+      const estRep = await repo5.obtenerEstadoReproduccion(client, idSesion, { bloquear: true });
+
+      if (!estRep.reproduccion_uid || estRep.reproduccion_uid !== uid) {
+        return { modo: 'noop', motivo: 'ya_avanzada' };
+      }
+      if (estRep.estado !== 'reproduciendo') {
+        throw new ErrorApi(409, 'no_esta_reproduciendo', 'La reproducción no está activa en este momento.');
+      }
+
+      const enCurso = await repo4.reproduccionEnCurso(client, idSesion, { bloquear: true });
+      if (!enCurso && !estRep.lista_cancion) {
+        return { modo: 'noop', motivo: 'ya_avanzada' };
+      }
+
+      const youtubeVideoId = enCurso ? enCurso.youtube_video_id : estRep.youtube_video_id;
+      const titulo = enCurso ? enCurso.titulo : estRep.titulo;
+      const duracionSeg = Number(enCurso ? enCurso.duracion_segundos : estRep.duracion_segundos) || 0;
+      const inicioEn = Number(enCurso ? enCurso.inicio_en : (estRep.lista_inicio_en || t));
+
+      if (tipo === 'error') {
+        const { rows: dup } = await client.query(
+          `SELECT 1 FROM e5_registro
+           WHERE id_establecimiento = $1 AND accion = 'display_error_reproduccion'
+             AND detalle->>'reproduccion_uid' = $2 LIMIT 1`,
+          [idEst, uid],
+        );
+        if (dup.length === 0) {
+          await repo5.registrar(client, {
+            idEst,
+            idUsuario: null,
+            accion: 'display_error_reproduccion',
+            detalle: {
+              id_sesion: idSesion,
+              id_display: d.id_display,
+              reproduccion_uid: uid,
+              youtube_video_id: youtubeVideoId,
+              codigo_error: b.codigo_error,
+            },
+            ahora: t,
+          });
+        }
+        return {
+          modo: 'error',
+          registrado: dup.length === 0,
+          idEst,
+          idSesion,
+          reproduccionUid: uid,
+          youtubeVideoId,
+          titulo,
+          codigoError: b.codigo_error,
+        };
+      }
+
+      const pausadoMs = Math.max(0, Number(estRep.tiempo_pausado_ms) || 0);
+      const efectivoMs = Math.max(0, (t - inicioEn) - pausadoMs);
+      const minimoMs = duracionSeg > 0 ? Math.max(0, duracionSeg * 1000 - TOLERANCIA_ENDED_MS) : Infinity;
+      if (!(duracionSeg > 0 && efectivoMs >= minimoMs)) {
+        throw new ErrorApi(409, 'reproduccion_en_curso', 'La canción aún está dentro de su duración efectiva.');
+      }
+
+      const seg = Math.max(0, Math.floor(efectivoMs / 1000));
+      let cerrada;
+      if (enCurso) {
+        await repo4.cerrarReproduccion(client, enCurso.id_reproduccion, {
+          fin: t, resultado: 'exitosa', segundos: seg, codigoError: null,
+        });
+        await repo4.cambiarEstadoSolicitud(client, enCurso.id_solicitud, 'reproducida');
+        cerrada = { fuente: 'solicitud', fila: enCurso, segundos: seg };
+      } else {
+        const idRep = await repo5.insertarReproduccionLista(client, {
+          idSesion, idEst, idCancion: estRep.lista_cancion, inicio: estRep.lista_inicio_en || t, fin: t,
+          resultado: 'exitosa', segundos: seg, codigoError: null,
+        });
+        cerrada = { fuente: 'lista', idReproduccion: idRep, fila: estRep, segundos: seg };
+      }
+
+      const avance = await avanzarInterno(client, sesion, estRep, {});
+      await repo4.incrementarVersion(client, idSesion);
+      await repo5.registrar(client, {
+        idEst,
+        idUsuario: null,
+        accion: 'reproduccion_finalizada',
+        detalle: {
+          id_sesion: idSesion,
+          fuente: cerrada.fuente,
+          origen: 'pantalla_publica',
+          reproduccion_uid: uid,
+          siguiente_modo: avance.modo,
+        },
+        ahora: t,
+      });
+      return { modo: 'ended', idEst, idSesion, cerrada, avance };
+    });
+
+    if (res.modo === 'noop') return { avanzado: false, motivo: res.motivo };
+    if (res.modo === 'error') {
+      if (res.registrado) {
+        emisor.emitir({
+          tipo: 'display_error_reproduccion',
+          sesion_id: res.idSesion,
+          id_establecimiento: res.idEst,
+          datos_evento: {
+            reproduccion_uid: res.reproduccionUid,
+            youtube_video_id: res.youtubeVideoId,
+            codigo_error: res.codigoError,
+          },
+        });
+        if (flujo && typeof flujo.notificarEvento === 'function') {
+          flujo.notificarEvento(res.idSesion, 'incidente_reproductor', {
+            reproduccion_uid: res.reproduccionUid,
+            youtube_video_id: res.youtubeVideoId,
+            titulo: res.titulo,
+            codigo_error: res.codigoError,
+            origen: 'pantalla_publica',
+          });
+        }
+      }
+      return { avanzado: false, incidente_registrado: true, duplicado: !res.registrado };
+    }
+
+    const c = res.cerrada;
+    const idRep = c.fuente === 'solicitud' ? idTexto('REP', c.fila.id_reproduccion) : idTexto('REP', c.idReproduccion);
+    const idSol = c.fuente === 'solicitud' ? idTexto('SOL', c.fila.id_solicitud) : null;
+    emisor.emitirE4({
+      tipo: 'reproduccion_finalizada',
+      sesion_id: res.idSesion,
+      id_establecimiento: res.idEst,
+      datos_evento: {
+        id_reproduccion: idRep,
+        id_solicitud: idSol,
+        segundos_reproducidos: c.segundos,
+        youtube_video_id: c.fila.youtube_video_id,
+        total_votos: c.fila.total_votos || 0,
+        origen: 'reproductor',
+      },
+    });
+    emitirInicio(res.idSesion, res.idEst, res.avance, null);
+    notificar(res.idSesion);
+    return { avanzado: true, siguiente_modo: res.avance.modo };
+  }
+
   return {
     estadoActual, iniciar, pausar, reanudar,
     siguiente: (idEst, idSesion, body, usuario) => finalizarYAvanzar(idEst, idSesion, {
@@ -360,6 +541,7 @@ function crearReproductor({ pool, cola, flujo, ahora, emisor }) {
       segundos: body && Number.isInteger(body.segundos_reproducidos) ? body.segundos_reproducidos : 0,
       codigoError: body && typeof body.codigo_error === 'string' ? body.codigo_error.slice(0, 100) : 'error_youtube',
     }, usuario),
+    avanzarDesdeDisplay,
     verificarEspera,
   };
 }
