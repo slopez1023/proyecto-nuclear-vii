@@ -20,4 +20,11 @@ class DestinosTest {
     fun plantillaDeDetalle_usaElMismoArgumentoQueElConstructor() {
         assertEquals("detalle/{${Destinos.ARG_VIDEO_ID}}", Destinos.DETALLE)
     }
+
+    @Test
+    fun rutasDeIngreso_estanDefinidas() {
+        assertEquals("acceso", Destinos.ACCESO)
+        assertEquals("escaner", Destinos.ESCANER)
+        assertEquals("codigo", Destinos.CODIGO)
+    }
 }
