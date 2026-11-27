@@ -49,9 +49,21 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+        }
+    }
+
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+}
+
+androidComponents {
+    beforeVariants { variantBuilder ->
+        (variantBuilder as? com.android.build.api.variant.HasUnitTestBuilder)?.enableUnitTest = true
     }
 }
 
