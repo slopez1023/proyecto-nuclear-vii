@@ -1,0 +1,11 @@
+{
+  "publicado": false,
+  "version_name": "0.2.0",
+  "version_code": 2,
+  "tamano_bytes": 36723861,
+  "sha256": "42ae97303460ee09b80e99f22a227b95ea47afdc25f7196a1e5c607f7e780ee5",
+  "fecha_publicacion": "2026-11-27",
+  "min_sdk": 26,
+  "android_minimo": "Android 8.0 (API 26)",
+  "url_descarga": "https://github.com/slopez1023/proyecto-nuclear-vii/releases/download/v0.2.0/ponga-pues-0.2.0.apk"
+}
