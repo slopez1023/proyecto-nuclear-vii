@@ -1059,7 +1059,6 @@
           ? '<button class="btn success" id="rep-toggle" data-acc="reanudar" title="Reanudar">▶ Reanudar</button>'
           : '<button class="btn primary" id="rep-toggle" data-acc="iniciar" title="Iniciar">▶ Iniciar</button>')}
             <button class="btn warn" id="rep-saltar" title="Saltar a la siguiente" ${actual ? '' : 'disabled'}>⏭ Saltar</button>
-            <button class="btn danger" id="rep-error" title="Reportar fallo de reproducción" ${actual ? '' : 'disabled'}>⚠ Reportar error</button>
           </div>
           ${state.sonido ? `
             <div class="mt" style="padding-top:14px;border-top:1px solid var(--line)">
@@ -1112,7 +1111,6 @@
     const tog = document.getElementById('rep-toggle');
     if (tog) tog.addEventListener('click', () => accionRep(tog.dataset.acc));
     document.getElementById('rep-saltar').addEventListener('click', () => accionRep('saltar'));
-    document.getElementById('rep-error').addEventListener('click', () => accionRep('error', { codigo_error: 'reportado_por_dj', segundos_reproducidos: 0 }));
     const sndMute = document.getElementById('snd-mute');
     if (sndMute) {
       const guardarSonido = async (cambios) => {
@@ -1536,30 +1534,15 @@
         </div>
 
         <div class="card">
-          <h2>${state.detalleLista ? esc(state.detalleLista.nombre) : 'Detalle de lista'}</h2>
+          <div class="between">
+            <h2>${state.detalleLista ? esc(state.detalleLista.nombre) : 'Detalle de lista'}</h2>
+            ${state.detalleLista ? `<span class="pill">${state.detalleLista.canciones.length} canciones</span>` : ''}
+          </div>
           ${state.detalleLista ? `
             <form id="f-buscar-yt" class="row mt">
-              <input id="yt-q" placeholder="Buscar canción o artista en YouTube..." value="${esc(state.busquedaYt || '')}" minlength="2" required style="flex:1">
+              <input id="yt-q" placeholder="Buscar canción o artista en YouTube..." value="${esc(state.busquedaYt || '')}" minlength="2" required style="flex:1;min-width:200px">
               <button class="btn primary" type="submit">Buscar</button>
             </form>
-            <div class="row mt">
-              <select id="fl-genero" style="flex:1;min-width:130px">
-                <option value="">Todos los géneros</option>
-                ${state.generos.map((g) => `<option value="${esc(g.genero)}" ${state.filtros.genero === g.genero ? 'selected' : ''}>${esc(g.genero)} (${g.total})</option>`).join('')}
-              </select>
-              <select id="fl-duracion" style="flex:1;min-width:130px">
-                <option value="" ${state.filtros.duracion === '' ? 'selected' : ''}>Cualquier duración</option>
-                <option value="corta" ${state.filtros.duracion === 'corta' ? 'selected' : ''}>Corta (hasta 3 min)</option>
-                <option value="media" ${state.filtros.duracion === 'media' ? 'selected' : ''}>Media (3 a 5 min)</option>
-                <option value="larga" ${state.filtros.duracion === 'larga' ? 'selected' : ''}>Larga (más de 5 min)</option>
-              </select>
-              <select id="fl-orden" style="flex:1;min-width:130px">
-                <option value="popularidad" ${state.filtros.orden === 'popularidad' ? 'selected' : ''}>Más populares</option>
-                <option value="duracion_asc" ${state.filtros.orden === 'duracion_asc' ? 'selected' : ''}>Más cortas primero</option>
-                <option value="titulo" ${state.filtros.orden === 'titulo' ? 'selected' : ''}>Título A–Z</option>
-              </select>
-              <button id="fl-aplicar" type="button" class="btn">Filtrar catálogo</button>
-            </div>
             ${state.catalogoResultados.length ? `
               <div class="mt" style="max-height:260px;overflow:auto;display:flex;flex-direction:column;gap:8px">
                 ${state.catalogoResultados.map((c) => `
@@ -1606,30 +1589,6 @@
     cont.querySelectorAll('[data-defl]').forEach((b) => b.addEventListener('click', async () => {
       try { await api('PUT', '/listas/configuracion/predeterminada', { id_lista_defecto: Number(b.dataset.defl) }); await cargarPanel(); } catch (e) { showToast(e.message, true); }
     }));
-    const flAplicar = document.getElementById('fl-aplicar');
-    if (flAplicar) flAplicar.addEventListener('click', async () => {
-      state.filtros = {
-        genero: document.getElementById('fl-genero').value,
-        duracion: document.getElementById('fl-duracion').value,
-        orden: document.getElementById('fl-orden').value,
-      };
-      const qs = new URLSearchParams({ orden: state.filtros.orden, limite: '30' });
-      const texto = document.getElementById('yt-q').value.trim();
-      if (texto) qs.set('q', texto);
-      if (state.filtros.genero) qs.set('genero', state.filtros.genero);
-      if (state.filtros.duracion === 'corta') qs.set('duracion_max', '180');
-      if (state.filtros.duracion === 'media') { qs.set('duracion_min', '180'); qs.set('duracion_max', '300'); }
-      if (state.filtros.duracion === 'larga') qs.set('duracion_min', '300');
-      if (state.sesionId) qs.set('sesion', state.sesionId);
-      try {
-        const res = await fetch('/api/catalogo/explorar?' + qs.toString());
-        const data = await res.json();
-        if (!res.ok) throw new Error((data.error && data.error.mensaje) || `Error ${res.status}`);
-        state.catalogoResultados = data.resultados || [];
-        if (!state.catalogoResultados.length) showToast('Ninguna canción del catálogo cumple esos filtros', true);
-        render();
-      } catch (err) { showToast(err.message, true); }
-    });
     const fbyt = document.getElementById('f-buscar-yt');
     if (fbyt) fbyt.addEventListener('submit', async (e) => {
       e.preventDefault();

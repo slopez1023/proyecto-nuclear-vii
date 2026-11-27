@@ -84,6 +84,30 @@ test('Copias de seguridad: generación manual, exportación PDF válida y aislam
     assert.ok(txt.trimEnd().endsWith('%%EOF'));
     assert.ok(txt.includes('Informe de copia de seguridad'));
     assert.ok(txt.includes('Cl\\341sicos de la casa'));
+    assert.ok(txt.includes('/Subtype /Image'), 'Debe embeber el logotipo oficial PNG');
+    assert.ok(txt.includes('/Im1 Do'), 'Debe dibujar el logotipo oficial en el encabezado');
+
+    // Prueba unitaria de títulos largos y paginación multipágina en generarPdfRespaldo
+    const { generarPdfRespaldo } = require('../src/e5/pdf-respaldo');
+    const muchasCanciones = Array.from({ length: 45 }, (_, i) => ({
+      posicion: i + 1,
+      titulo: `Título extremadamente largo de prueba número ${i + 1} con acentos áéíóúñ para verificar salto de línea sin truncamiento`,
+      artista_canal: `Artista Colaborativo ${i + 1}`,
+      total_votos: 50 - i,
+      total_solicitudes: 20,
+    }));
+    const pdfMulti = generarPdfRespaldo({
+      establecimientoNombre: 'Bar La Nota Oficial · Sede Principal',
+      respaldo: {
+        id_respaldo: 99,
+        generado_en: '2026-11-27T16:00:00.000Z',
+        origen: 'automatico',
+        canciones_mas_populares: muchasCanciones,
+        listas_predeterminadas: [{ nombre: 'Lista Nocturna', en_rotacion: true, canciones: muchasCanciones.slice(0, 15) }],
+      },
+    }).toString('latin1');
+    assert.ok(pdfMulti.includes('P\\341gina 2 de '), 'Debe paginar correctamente cuando hay muchos registros');
+    assert.ok(!pdfMulti.includes('...'), 'No debe truncar títulos largos con puntos suspensivos');
 
     // Otro establecimiento no puede descargar este PDF (404)
     const otroPdf = await fetch(`${e.url}/api/admin/respaldos/${idResp}/pdf`, { headers: e.adminOtro });
