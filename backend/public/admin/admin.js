@@ -1724,24 +1724,37 @@
         return `${x.toFixed(1)},${y.toFixed(1)}`;
       }).join(' ')
       : (temp.length === 1 ? `44,${(142 - (temp[0].eventos / maxEv) * 114).toFixed(1)} 460,${(142 - (temp[0].eventos / maxEv) * 114).toFixed(1)}` : '');
-    const uc = a.pipeline.ultima_corrida || {};
+    const hm = a.mapa_calor || null;
+    const hmMax = hm && hm.max_interacciones ? hm.max_interacciones : 0;
+    const nivelCelda = (n) => {
+      if (!n || !hmMax) return 0;
+      const ratio = n / hmMax;
+      if (ratio >= 0.75) return 4;
+      if (ratio >= 0.50) return 3;
+      if (ratio >= 0.25) return 2;
+      return 1;
+    };
+    const periodoTexto = hm && hm.periodo
+      ? `Del ${fmtFecha(hm.periodo.desde)} al ${fmtFecha(hm.periodo.hasta)} (${esc(hm.zona_horaria || 'America/Bogota')})`
+      : 'Sin período con actividad registrada';
+    const respaldos = (state.respaldos && state.respaldos.respaldos) || [];
 
     cont.innerHTML = `
       <div class="between">
         <div>
           <div class="eyebrow">Acceso de administrador</div>
           <h2 style="font-size:1.35rem;margin:4px 0">Analítica</h2>
-          <p class="muted" style="margin:0">Interpreta participación, popularidad y comportamiento operativo.</p>
+          <p class="muted" style="margin:0">Participación del público, canciones más solicitadas y copias de seguridad.</p>
         </div>
         <div class="row">
           <select id="an-alcance" style="width:auto">
             <option value="establecimiento" ${state.analiticaAlcance === 'establecimiento' ? 'selected' : ''}>Todo el establecimiento</option>
             <option value="sesion" ${state.analiticaAlcance === 'sesion' ? 'selected' : ''}>Sesión actual (${esc(state.sesionId || 'N/A')})</option>
           </select>
-          <button id="an-ingesta" class="btn primary">Ejecutar pipeline</button>
         </div>
       </div>
 
+      <!-- Primera sección: indicadores generales -->
       <div class="grid-4 mt">
         <div class="card">
           <div class="kpi-head"><div class="kpi-icon">♪</div><span class="kpi-dots">···</span></div>
@@ -1753,7 +1766,7 @@
           <div class="kpi-head"><div class="kpi-icon">✓</div><span class="kpi-dots">···</span></div>
           <div class="muted">Votos válidos</div>
           <div class="kpi-num">${ind.votos_validos}</div>
-          <div class="muted">Confirmados por regla E4</div>
+          <div class="muted">Votos aceptados en cola</div>
         </div>
         <div class="card">
           <div class="kpi-head"><div class="kpi-icon">⚠</div><span class="kpi-dots">···</span></div>
@@ -1765,10 +1778,11 @@
           <div class="kpi-head"><div class="kpi-icon">▶</div><span class="kpi-dots">···</span></div>
           <div class="muted">Reproducciones</div>
           <div class="kpi-num">${ind.reproducciones_totales}</div>
-          <div class="muted">${ind.reproducciones_exitosas} eventos operativos válidos</div>
+          <div class="muted">${ind.reproducciones_exitosas} completadas</div>
         </div>
       </div>
 
+      <!-- Segunda sección: comportamiento musical -->
       <div class="grid-2 mt">
         <div class="card">
           <div class="between">
@@ -1808,54 +1822,121 @@
             </div>` : '<p class="muted mt">Aún no hay solicitudes registradas para graficar.</p>'}
         </div>
 
-        <div class="card">
-          <div class="between">
-            <div>
-              <div class="eyebrow">¿Cuándo hubo mayor participación?</div>
-              <h2 style="margin:4px 0 0">Participación temporal (cada 30 min)</h2>
-              <div class="muted" style="font-size:.76rem">Eje Y: acciones de clientes (ingresos, búsquedas, pedidos y votos) · Eje X: hora</div>
-            </div>
-            <span class="pill">Cada 30 min</span>
+        <div class="card" style="display:flex;flex-direction:column;justify-content:space-between">
+          <div>
+            <div class="eyebrow">Destacada del período</div>
+            <h2 style="margin:4px 0 0">Canción más popular</h2>
+            ${ind.cancion_mas_popular ? `
+              <div class="song-row mt">
+                <div class="kpi-icon" style="width:44px;height:44px;font-size:1.25rem">★</div>
+                <div>
+                  <div class="song-title">${esc(ind.cancion_mas_popular.titulo)}</div>
+                  <div class="song-meta">${esc(ind.cancion_mas_popular.artista_canal || 'Artista no especificado')}</div>
+                  <div class="row mt" style="gap:8px">
+                    <span class="pill accent">${ind.cancion_mas_popular.total_votos} votos</span>
+                    <span class="pill">${ind.cancion_mas_popular.total_solicitudes} solicitudes</span>
+                  </div>
+                </div>
+              </div>` : '<p class="muted mt">Todavía no hay canciones con votos suficientes en este alcance.</p>'}
           </div>
-          ${temp.length ? `
-            <div class="chart-bars-wrap" style="padding-top:8px">
-              <svg class="chart-svg" viewBox="0 0 480 175" preserveAspectRatio="none">
-                <defs>
-                  <linearGradient id="an-grad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stop-color="rgba(139,124,255,0.28)" />
-                    <stop offset="100%" stop-color="rgba(139,124,255,0)" />
-                  </linearGradient>
-                </defs>
-                <line x1="36" y1="18" x2="36" y2="145" stroke="var(--line-strong)" stroke-width="1.2" />
-                <line x1="36" y1="145" x2="466" y2="145" stroke="var(--line-strong)" stroke-width="1.2" />
-                <text x="30" y="28" text-anchor="end" fill="var(--muted)" font-size="11">${maxEv}</text>
-                <text x="30" y="88" text-anchor="end" fill="var(--muted)" font-size="11">${Math.round(maxEv / 2)}</text>
-                <text x="30" y="145" text-anchor="end" fill="var(--muted)" font-size="11">0</text>
-                <polygon fill="url(#an-grad)" points="${puntosSvg} 460,145 44,145" />
-                <polyline fill="none" stroke="var(--accent-strong)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" points="${puntosSvg}" />
-                ${temp.map((t, i) => {
-      const x = temp.length > 1 ? 44 + (i * 416) / (temp.length - 1) : 252;
-      const y = 142 - (t.eventos / maxEv) * 114;
-      return `
-                    <circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4.5" fill="var(--accent-strong)" />
-                    <text x="${x.toFixed(1)}" y="${Math.max(14, y - 9).toFixed(1)}" text-anchor="middle" fill="var(--text)" font-size="11" font-weight="700">${t.eventos}</text>
-                    <text x="${x.toFixed(1)}" y="164" text-anchor="middle" fill="var(--muted)" font-size="10">${esc(t.hora)}</text>`;
-    }).join('')}
-              </svg>
-            </div>` : '<p class="muted mt">Aún no hay participación de clientes registrada en este periodo.</p>'}
+          <p class="muted" style="margin-top:16px;font-size:.82rem">Basado en votos confirmados dentro del alcance seleccionado.</p>
         </div>
       </div>
 
-      <div class="grid-4 mt">
-        <div class="card">
-          <div class="muted">Canción más popular</div>
-          <div class="stat-val" style="font-size:1.05rem">${ind.cancion_mas_popular ? esc(ind.cancion_mas_popular.titulo) : 'Sin datos'}</div>
-          <div class="muted">${ind.cancion_mas_popular ? `${ind.cancion_mas_popular.total_votos} votos · ${ind.cancion_mas_popular.total_solicitudes} sol.` : '—'}</div>
+      <!-- Tercera sección: participación -->
+      <div class="card mt">
+        <div class="between">
+          <div>
+            <div class="eyebrow">¿Cuándo hubo mayor participación?</div>
+            <h2 style="margin:4px 0 0">Participación temporal (cada 5 min)</h2>
+            <div class="muted" style="font-size:.76rem">Eje Y: interacciones de clientes · Eje X: intervalos de 5 minutos</div>
+          </div>
+          <span class="pill accent">Intervalos de 5 min</span>
         </div>
+        ${temp.length ? `
+          <div class="chart-bars-wrap" style="padding-top:8px">
+            <svg class="chart-svg" viewBox="0 0 480 175" preserveAspectRatio="none">
+              <defs>
+                <linearGradient id="an-grad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="rgba(139,124,255,0.32)" />
+                  <stop offset="100%" stop-color="rgba(139,124,255,0)" />
+                </linearGradient>
+              </defs>
+              <line x1="36" y1="18" x2="36" y2="145" stroke="var(--line-strong)" stroke-width="1.2" />
+              <line x1="36" y1="145" x2="466" y2="145" stroke="var(--line-strong)" stroke-width="1.2" />
+              <text x="30" y="28" text-anchor="end" fill="var(--muted)" font-size="11">${maxEv}</text>
+              <text x="30" y="88" text-anchor="end" fill="var(--muted)" font-size="11">${Math.round(maxEv / 2)}</text>
+              <text x="30" y="145" text-anchor="end" fill="var(--muted)" font-size="11">0</text>
+              <polygon fill="url(#an-grad)" points="${puntosSvg} 460,145 44,145" />
+              <polyline fill="none" stroke="var(--accent-strong)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" points="${puntosSvg}" />
+              ${temp.map((t, i) => {
+                const x = temp.length > 1 ? 44 + (i * 416) / (temp.length - 1) : 252;
+                const y = 142 - (t.eventos / maxEv) * 114;
+                const mostrarEtiqueta = temp.length <= 7 || i % 2 === 0 || i === temp.length - 1;
+                const rango = t.hora_fin ? `${t.hora} – ${t.hora_fin}` : t.hora;
+                return `
+                  <g class="temp-pt" data-rango="${esc(rango)}" data-eventos="${t.eventos}" style="cursor:pointer">
+                    <title>${esc(rango)}: ${t.eventos} interacciones</title>
+                    <circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="12" fill="transparent" />
+                    <circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4.5" fill="var(--accent-strong)" />
+                    <text x="${x.toFixed(1)}" y="${Math.max(14, y - 9).toFixed(1)}" text-anchor="middle" fill="var(--text)" font-size="10.5" font-weight="700">${t.eventos}</text>
+                    ${mostrarEtiqueta ? `<text x="${x.toFixed(1)}" y="164" text-anchor="middle" fill="var(--muted)" font-size="10">${esc(t.hora)}</text>` : ''}
+                  </g>`;
+              }).join('')}
+            </svg>
+          </div>
+          <div id="an-temp-detalle" class="chart-detail-bar">Pasa el cursor o selecciona un punto para ver el detalle del intervalo de 5 minutos.</div>`
+          : '<p class="muted mt">Aún no hay participación de clientes registrada en este período.</p>'}
+      </div>
+
+      <div class="card mt">
+        <div class="between">
+          <div>
+            <div class="eyebrow">Patrones por día y franja horaria</div>
+            <h2 style="margin:4px 0 0">Mapa de calor de participación</h2>
+            <div class="muted" style="font-size:.78rem">${periodoTexto}</div>
+          </div>
+          <span class="pill">${hm ? hm.total_interacciones : 0} interacciones</span>
+        </div>
+        ${hm && hm.total_interacciones > 0 ? `
+          <div class="heatmap-wrap">
+            <div class="heatmap-grid">
+              <div></div>
+              ${(hm.franjas || []).map((f) => `<div class="heatmap-head" title="${esc(f.etiqueta)}">${esc(f.corta)}</div>`).join('')}
+              ${(hm.dias || []).map((diaNombre, idxDia) => {
+                const diaIso = idxDia + 1;
+                const celdasDia = (hm.celdas || []).filter((c) => c.dia_iso === diaIso);
+                return `
+                  <div class="heatmap-day">${esc(diaNombre)}</div>
+                  ${celdasDia.map((c) => {
+                    const lv = nivelCelda(c.interacciones);
+                    return `<button type="button" class="heatmap-cell lv-${lv}" data-dia="${esc(c.dia_nombre)}" data-franja="${esc(c.franja_etiqueta)}" data-interacciones="${c.interacciones}" title="${esc(c.dia_nombre)} · ${esc(c.franja_etiqueta)}: ${c.interacciones} interacciones">${c.interacciones > 0 ? c.interacciones : ''}</button>`;
+                  }).join('')}`;
+              }).join('')}
+            </div>
+          </div>
+          <div id="an-heatmap-detalle" class="chart-detail-bar">Selecciona o pasa el cursor sobre una celda para consultar el día, la franja horaria y el total de interacciones.</div>
+          <div class="heatmap-footer">
+            <span>Cada celda agrupa 2 horas de actividad real registrada.</span>
+            <span class="heatmap-scale">
+              Menor
+              <span class="heatmap-swatch lv-0"></span>
+              <span class="heatmap-swatch lv-1"></span>
+              <span class="heatmap-swatch lv-2"></span>
+              <span class="heatmap-swatch lv-3"></span>
+              <span class="heatmap-swatch lv-4"></span>
+              Mayor
+            </span>
+          </div>`
+          : '<p class="muted mt">Aún no hay suficientes interacciones registradas para construir el mapa de calor en este alcance.</p>'}
+      </div>
+
+      <!-- Cuarta sección: indicadores complementarios -->
+      <div class="grid-3 mt">
         <div class="card">
           <div class="muted">Usuarios únicos participantes</div>
           <div class="stat-val">${ind.usuarios_unicos}</div>
-          <div class="muted">Dispositivos anonimizados</div>
+          <div class="muted">Dispositivos participantes en el alcance</div>
         </div>
         <div class="card">
           <div class="muted">Tiempo de espera promedio</div>
@@ -1869,75 +1950,32 @@
         </div>
       </div>
 
-      <div class="grid-2 mt">
-        <div class="card">
-          <div class="between">
-            <h2>Pipeline de ingesta, limpieza y almacenamiento</h2>
-            <span class="pill ok"><span class="dot"></span>Activo</span>
-          </div>
-          <p class="muted">Última corrida: ${fmtFecha(uc.ejecutado_en)}</p>
-          <div class="grid-3 mt">
-            <div class="song-row"><div><div class="muted">Leídos (JSONL)</div><strong>${uc.leidos ?? 0}</strong></div></div>
-            <div class="song-row"><div><div class="muted">Válidos / Nuevos</div><strong>${uc.validos ?? 0} / ${uc.insertados ?? 0}</strong></div></div>
-            <div class="song-row"><div><div class="muted">Descartados / Dup.</div><strong>${uc.descartados ?? 0} / ${uc.duplicados ?? 0}</strong></div></div>
-          </div>
-          <h3 class="mt">Corridas recientes</h3>
-          <table>
-            <thead><tr><th>Fecha</th><th>Leídos</th><th>Válidos</th><th>Dup.</th><th>Desc.</th></tr></thead>
-            <tbody>
-              ${(a.pipeline.corridas_recientes || []).map((c) => `
-                <tr>
-                  <td>${fmtFecha(c.ejecutado_en)}</td>
-                  <td>${c.leidos}</td>
-                  <td>${c.validos}</td>
-                  <td>${c.duplicados}</td>
-                  <td>${c.descartados}</td>
-                </tr>`).join('') || '<tr><td colspan="5" class="muted">Sin corridas registradas.</td></tr>'}
-            </tbody>
-          </table>
-        </div>
-
-        <div class="card">
-          <div class="between">
-            <h2>Evidencia de anonimización</h2>
-            <span class="pill ${a.anonimizacion.cumple_privacidad ? 'ok' : 'err'}"><span class="dot"></span>${a.anonimizacion.cumple_privacidad ? '0 UUIDs crudos' : 'Alerta'}</span>
-          </div>
-          <p class="muted">Método: <strong>${esc(a.anonimizacion.metodo)}</strong> · Eventos anonimizados: <strong>${a.anonimizacion.total_anonimizados}</strong></p>
-          <table>
-            <thead><tr><th>Dispositivo anonimizado</th><th>Tipo</th><th>Actor</th><th>Fecha</th></tr></thead>
-            <tbody>
-              ${(a.anonimizacion.muestra || []).map((m) => `
-                <tr>
-                  <td><code>${esc(m.dispositivo_hash)}</code></td>
-                  <td>${esc(m.tipo)}</td>
-                  <td>${esc(m.actor)}</td>
-                  <td>${fmtFecha(m.fecha_hora)}</td>
-                </tr>`).join('') || '<tr><td colspan="4" class="muted">Sin eventos con dispositivo en este alcance.</td></tr>'}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
+      <!-- Copias de seguridad -->
       <div class="card mt">
         <div class="between">
           <div>
-            <div class="eyebrow">Bonificación · Respaldo para análisis posterior</div>
-            <h2 style="margin:4px 0 0">Respaldo automático de las listas más populares</h2>
+            <div class="eyebrow">Respaldo administrativo</div>
+            <h2 style="margin:4px 0 0">Copias de seguridad</h2>
+            <p class="muted" style="margin:4px 0 0">Consulta y descarga copias de seguridad de la información musical de tu establecimiento (respaldo automático cada ${state.respaldos ? state.respaldos.intervalo_horas : 24} h).</p>
           </div>
-          <button id="rs-generar" class="btn primary">Generar respaldo ahora</button>
+          <button id="rs-generar" class="btn primary">Generar copia de seguridad</button>
         </div>
-        <p class="muted">Cada ${state.respaldos ? state.respaldos.intervalo_horas : 24} h el sistema guarda el Top 20 de canciones por votos, los votos por género y las listas predeterminadas (JSON en <code>backend/data/respaldos</code> y en base de datos).</p>
-        <table>
-          <thead><tr><th>Fecha</th><th>Origen</th><th>Canciones</th><th>Archivo</th><th></th></tr></thead>
+        <table class="mt">
+          <thead><tr><th>Fecha y hora</th><th>Origen</th><th>Información respaldada</th><th>Estado</th><th>Acción</th></tr></thead>
           <tbody>
-            ${((state.respaldos && state.respaldos.respaldos) || []).map((r) => `
+            ${respaldos.map((r) => `
               <tr>
                 <td>${fmtFecha(r.generado_en)}</td>
                 <td><span class="pill ${r.origen === 'automatico' ? 'ok' : 'accent'}">${r.origen === 'automatico' ? 'Automático' : 'Manual'}</span></td>
-                <td>${r.total_canciones}</td>
-                <td class="muted">${esc(r.archivo || 'solo base de datos')}</td>
-                <td><a class="btn sm" href="/api/admin/respaldos/${r.id_respaldo}" download>Descargar</a></td>
-              </tr>`).join('') || '<tr><td colspan="5" class="muted">Aún no hay respaldos. Se generará el primero automáticamente.</td></tr>'}
+                <td>${r.total_canciones} canciones${r.total_listas != null ? ` · ${r.total_listas} listas` : ''}</td>
+                <td><span class="pill ok"><span class="dot"></span>Completada</span></td>
+                <td>
+                  <div class="backup-actions">
+                    <a class="btn sm primary" href="/api/admin/respaldos/${r.id_respaldo}/pdf" download>Descargar informe</a>
+                    <a class="btn sm" href="/api/admin/respaldos/${r.id_respaldo}" download title="Respaldo técnico para restauración">JSON técnico</a>
+                  </div>
+                </td>
+              </tr>`).join('') || '<tr><td colspan="5" class="muted">Aún no hay copias de seguridad registradas. Se generará la primera automáticamente.</td></tr>'}
           </tbody>
         </table>
       </div>
@@ -1964,51 +2002,226 @@
       state.analiticaAlcance = e.target.value;
       await cargarPanel();
     });
-    document.getElementById('rs-generar').addEventListener('click', async () => {
+
+    const tempDetalle = document.getElementById('an-temp-detalle');
+    if (tempDetalle) {
+      cont.querySelectorAll('.temp-pt').forEach((el) => {
+        const mostrar = () => {
+          tempDetalle.innerHTML = `Intervalo <strong>${esc(el.dataset.rango)}</strong>: <strong>${esc(el.dataset.eventos)}</strong> interacciones registradas.`;
+        };
+        el.addEventListener('mouseenter', mostrar);
+        el.addEventListener('click', mostrar);
+      });
+    }
+
+    const hmDetalle = document.getElementById('an-heatmap-detalle');
+    if (hmDetalle) {
+      cont.querySelectorAll('.heatmap-cell').forEach((el) => {
+        const mostrar = () => {
+          hmDetalle.innerHTML = `<strong>${esc(el.dataset.dia)}</strong> · Franja <strong>${esc(el.dataset.franja)}</strong>: <strong>${esc(el.dataset.interacciones)}</strong> interacciones (${periodoTexto}).`;
+        };
+        el.addEventListener('mouseenter', mostrar);
+        el.addEventListener('focus', mostrar);
+        el.addEventListener('click', mostrar);
+      });
+    }
+
+    const btnRespaldo = document.getElementById('rs-generar');
+    btnRespaldo.addEventListener('click', async () => {
+      btnRespaldo.disabled = true;
+      showToast('Iniciando generación de copia de seguridad…');
       try {
         const r = await api('POST', '/respaldos');
-        showToast(`Respaldo generado (${r.total_canciones} canciones)`);
+        showToast(`Copia de seguridad completada (${r.total_canciones} canciones respaldadas)`);
         await cargarPanel();
-      } catch (e) { showToast(e.message, true); }
+      } catch (e) {
+        btnRespaldo.disabled = false;
+        showToast(e.message, true);
+      }
     });
-    document.getElementById('an-ingesta').addEventListener('click', async () => {
-      try {
-        const r = await api('POST', '/analitica/ingesta');
-        showToast(`Pipeline ejecutado: ${r.insertados} nuevos, ${r.duplicados} duplicados, ${r.descartados} descartados`);
-        await cargarPanel();
-      } catch (e) { showToast(e.message, true); }
+  }
+
+  const TRADUCCIONES_ACTIVIDAD = {
+    sesion_iniciada: { icon: '▶', texto: 'Se inició una sesión musical' },
+    sesion_creada: { icon: '✦', texto: 'Se creó una nueva sesión' },
+    sesion_cerrada: { icon: '■', texto: 'Se cerró la sesión musical' },
+    horario_actualizado: { icon: '◷', texto: 'Se actualizaron los horarios' },
+    horario_excepcion_actualizada: { icon: '◷', texto: 'Se actualizó una fecha especial en los horarios' },
+    horario_excepcion_eliminada: { icon: '◷', texto: 'Se eliminó una fecha especial de los horarios' },
+    jornada_automatica_omitida: { icon: '⚙', texto: 'Se omitió la apertura automática porque ya existía una sesión manual' },
+    modo_automatico_actualizado: { icon: '⚙', texto: 'Se actualizó la configuración del modo automático' },
+    pausa_manual_iniciada: { icon: '⏸', texto: 'Se pausó temporalmente el código de acceso' },
+    pausa_manual_finalizada: { icon: '▶', texto: 'Se reanudó el código de acceso' },
+    qr_activado: { icon: '◈', texto: 'Se activó el código QR de acceso' },
+    qr_desactivado: { icon: '◈', texto: 'Se desactivó el código QR de acceso' },
+    mantenimiento_cola: { icon: '🧹', texto: 'Se realizó limpieza de solicitudes pendientes' },
+    respaldo_listas_generado: { icon: '💾', texto: 'Se generó una copia de seguridad musical' },
+    lista_creada: { icon: '♫', texto: 'Se creó una lista musical' },
+    lista_actualizada: { icon: '♫', texto: 'Se actualizó una lista musical' },
+    lista_eliminada: { icon: '♫', texto: 'Se eliminó una lista musical' },
+    lista_cancion_agregada: { icon: '♫', texto: 'Se agregó una canción a una lista musical' },
+    lista_cancion_quitada: { icon: '♫', texto: 'Se quitó una canción de una lista musical' },
+    lista_predeterminada_actualizada: { icon: '♫', texto: 'Se actualizó la lista musical por defecto' },
+    bloqueo_creado: { icon: '⊘', texto: 'Se bloqueó una canción en el establecimiento' },
+    bloqueo_levantado: { icon: '✓', texto: 'Se habilitó nuevamente una canción bloqueada' },
+    display_creado: { icon: '▣', texto: 'Se vinculó una pantalla pública' },
+    display_revocado: { icon: '▣', texto: 'Se desvinculó la pantalla pública' },
+  };
+
+  function traducirEventoActividad(r) {
+    const t = TRADUCCIONES_ACTIVIDAD[r.accion];
+    if (t) return t;
+    return { icon: '•', texto: 'Se realizó una actualización operativa en el establecimiento' };
+  }
+
+  function abrirModalConfirmacion({ titulo, mensaje, detalle, textoConfirmar, claseConfirmar = 'warn', alConfirmar }) {
+    const previo = document.getElementById('modal-confirm-mant');
+    if (previo) previo.remove();
+    const wrap = document.createElement('div');
+    wrap.id = 'modal-confirm-mant';
+    wrap.className = 'modal-backdrop';
+    wrap.innerHTML = `
+      <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="mc-titulo">
+        <h2 id="mc-titulo" style="margin:0 0 8px">${esc(titulo)}</h2>
+        <p class="muted" style="margin:0 0 10px">${esc(mensaje)}</p>
+        ${detalle ? `<p style="margin:0 0 16px;font-size:.88rem;color:var(--text2)">${esc(detalle)}</p>` : ''}
+        <div class="row" style="justify-content:flex-end">
+          <button type="button" class="btn" id="mc-cancelar">Cancelar</button>
+          <button type="button" class="btn ${esc(claseConfirmar)}" id="mc-confirmar">${esc(textoConfirmar)}</button>
+        </div>
+      </div>`;
+    document.body.appendChild(wrap);
+    const cerrar = () => wrap.remove();
+    document.getElementById('mc-cancelar').addEventListener('click', cerrar);
+    wrap.addEventListener('click', (ev) => { if (ev.target === wrap) cerrar(); });
+    document.getElementById('mc-confirmar').addEventListener('click', async () => {
+      cerrar();
+      await alConfirmar();
     });
   }
 
   function renderMantenimiento(cont, s) {
     const m = state.mantenimiento;
+    const p = state.panel || {};
+    const resumenSol = (m && m.resumen_solicitudes) || {};
+    const pendientes = resumenSol.pendiente ?? 0;
+    const listaInfo = m && m.lista_predeterminada;
+    const cancionesLista = listaInfo ? listaInfo.total_canciones : 0;
+    const estadoLista = listaInfo ? listaInfo.estado_actual : 'Sin lista asignada';
+    const eventosOrdenados = (state.registro || []).slice().sort((a, b) => Date.parse(b.fecha) - Date.parse(a.fecha));
+
     cont.innerHTML = `
-      <div class="grid-2">
+      <!-- Encabezado y estado general -->
+      <div class="grid-3">
         <div class="card">
-          <h2>Limpieza de cola y preparación (${esc(s ? s.id_sesion : 'Sin sesión activa')})</h2>
-          <p class="muted">Retira únicamente las solicitudes pendientes de la sesión actual. Todo el historial de solicitudes y reproducciones se conserva en la base de datos.</p>
-          <div class="row mt">
-            <button id="btn-limpiar" class="btn warn" ${s ? '' : 'disabled'}>Limpiar cola pendiente</button>
-            <button id="btn-limpiar-todo" class="btn danger" ${s ? '' : 'disabled'}>Limpiar cola y reiniciar lista</button>
-          </div>
-          ${m ? `<pre class="muted mt" style="white-space:pre-wrap">${esc(JSON.stringify(m.resumen_solicitudes, null, 2))}</pre>` : ''}
+          <div class="muted">Sesión activa</div>
+          <div class="stat-val" style="font-size:1.2rem">${s && s.estado === 'activa' ? 'Activa y en operación' : 'Sin sesión activa'}</div>
+          <div class="muted">${s && s.estado === 'activa' ? 'El establecimiento está recibiendo participación' : 'Activa una sesión para gestionar solicitudes'}</div>
         </div>
         <div class="card">
-          <h2>Registro de auditoría reciente</h2>
-          ${state.registro.slice(0, 12).map((r) => `
-            <div style="padding:6px 0;border-bottom:1px solid var(--line);font-size:.84rem">
-              <strong>${esc(r.accion)}</strong> · ${esc(r.usuario || 'Sistema')} · <span class="muted">${fmtFecha(r.fecha)}</span>
-            </div>`).join('') || '<p class="muted">Sin registros.</p>'}
+          <div class="muted">Código de acceso disponible</div>
+          <div class="stat-val" style="font-size:1.2rem">${s && s.qr_estado === 'activo' ? 'Disponible' : 'No disponible'}</div>
+          <div class="muted">${s && s.qr_estado === 'activo' ? 'QR y código listos para los clientes' : 'El acceso de clientes está pausado o cerrado'}</div>
+        </div>
+        <div class="card">
+          <div class="muted">Dispositivos conectados</div>
+          <div class="stat-val">${p.dispositivos_activos ?? 0}</div>
+          <div class="muted">Clientes conectados en tiempo real</div>
+        </div>
+      </div>
+
+      <div class="grid-2 mt">
+        <!-- Gestión de solicitudes -->
+        <div class="card">
+          <div class="eyebrow">Control operativo</div>
+          <h2 style="margin:4px 0 6px">Gestión de solicitudes</h2>
+          <p class="muted" style="margin:0">Administra las solicitudes pendientes de reproducción y prepara la lista musical cuando sea necesario.</p>
+
+          <div class="maint-kpis">
+            <div class="maint-kpi">
+              <div class="muted" style="font-size:.78rem">Solicitudes pendientes</div>
+              <div class="val">${pendientes}</div>
+            </div>
+            <div class="maint-kpi">
+              <div class="muted" style="font-size:.78rem">Canciones en lista</div>
+              <div class="val">${cancionesLista}</div>
+            </div>
+            <div class="maint-kpi">
+              <div class="muted" style="font-size:.78rem">Estado actual de la lista</div>
+              <div class="val" style="font-size:1.05rem;text-transform:capitalize">${esc(estadoLista)}</div>
+            </div>
+          </div>
+
+          <div class="row mt">
+            <button id="btn-limpiar" class="btn warn" ${s ? '' : 'disabled'}>Limpiar solicitudes pendientes</button>
+            <button id="btn-limpiar-todo" class="btn danger" ${s ? '' : 'disabled'}>Reiniciar lista musical</button>
+          </div>
+          <p class="muted mt" style="font-size:.8rem">Las estadísticas históricas, votos confirmados y reproducciones completadas siempre se conservan.</p>
+        </div>
+
+        <!-- Actividad reciente -->
+        <div class="card">
+          <div class="between">
+            <div>
+              <div class="eyebrow">Historial operativo</div>
+              <h2 style="margin:4px 0 0">Actividad reciente</h2>
+            </div>
+            <span class="pill">${eventosOrdenados.slice(0, 12).length} eventos</span>
+          </div>
+          <div class="activity-list">
+            ${eventosOrdenados.slice(0, 12).map((r) => {
+              const info = traducirEventoActividad(r);
+              const esAdmin = Boolean(r.usuario);
+              return `
+                <div class="activity-item">
+                  <div class="activity-icon ${esAdmin ? '' : 'sistema'}">${info.icon}</div>
+                  <div style="flex:1;min-width:0">
+                    <div style="font-weight:600;font-size:.9rem">${esc(info.texto)}</div>
+                    <div class="activity-meta">
+                      <span class="pill ${esAdmin ? 'accent' : ''}">${esAdmin ? `Administrador (${esc(r.usuario)})` : 'Sistema'}</span>
+                      <span>${fmtFecha(r.fecha)}</span>
+                    </div>
+                  </div>
+                </div>`;
+            }).join('') || '<p class="muted mt">No hay actividad reciente registrada.</p>'}
+          </div>
         </div>
       </div>`;
 
-    document.getElementById('btn-limpiar').addEventListener('click', async () => {
+    document.getElementById('btn-limpiar').addEventListener('click', () => {
       if (!s) return;
-      try { const r = await api('POST', `/sesiones/${encodeURIComponent(s.id_sesion)}/mantenimiento/limpiar-cola`, { reiniciar_lista: false }); showToast(`Retiradas ${r.solicitudes_retiradas} solicitudes (historial conservado)`); await cargarPanel(); } catch (e) { showToast(e.message, true); }
+      abrirModalConfirmacion({
+        titulo: 'Limpiar solicitudes pendientes',
+        mensaje: `Se retirarán únicamente las ${pendientes} solicitudes pendientes de la sesión actual.`,
+        detalle: 'El historial de solicitudes anteriores, los votos y las reproducciones completadas se conservarán intactos.',
+        textoConfirmar: 'Sí, limpiar pendientes',
+        claseConfirmar: 'warn',
+        alConfirmar: async () => {
+          try {
+            const r = await api('POST', `/sesiones/${encodeURIComponent(s.id_sesion)}/mantenimiento/limpiar-cola`, { reiniciar_lista: false });
+            showToast(`Se retiraron ${r.solicitudes_retiradas} solicitudes pendientes (historial conservado)`);
+            await cargarPanel();
+          } catch (e) { showToast(e.message, true); }
+        },
+      });
     });
-    document.getElementById('btn-limpiar-todo').addEventListener('click', async () => {
+
+    document.getElementById('btn-limpiar-todo').addEventListener('click', () => {
       if (!s) return;
-      try { const r = await api('POST', `/sesiones/${encodeURIComponent(s.id_sesion)}/mantenimiento/limpiar-cola`, { reiniciar_lista: true }); showToast(`Cola limpia (${r.solicitudes_retiradas}) y lista reiniciada`); await cargarPanel(); } catch (e) { showToast(e.message, true); }
+      abrirModalConfirmacion({
+        titulo: 'Reiniciar lista musical',
+        mensaje: `Esta acción retirará las ${pendientes} solicitudes pendientes y reiniciará el orden de reproducción de la lista musical por defecto desde el inicio.`,
+        detalle: 'Consecuencia: las canciones pendientes saldrán de la cola actual y la lista predeterminada volverá a su primera canción. Los votos y reproducciones históricas no se eliminan.',
+        textoConfirmar: 'Sí, reiniciar lista musical',
+        claseConfirmar: 'danger',
+        alConfirmar: async () => {
+          try {
+            const r = await api('POST', `/sesiones/${encodeURIComponent(s.id_sesion)}/mantenimiento/limpiar-cola`, { reiniciar_lista: true });
+            showToast(`Solicitudes limpiadas (${r.solicitudes_retiradas}) y lista musical reiniciada`);
+            await cargarPanel();
+          } catch (e) { showToast(e.message, true); }
+        },
+      });
     });
   }
 

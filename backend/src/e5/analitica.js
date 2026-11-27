@@ -15,6 +15,95 @@ const { iso } = require('./comun-e5');
 
 const RUTA_EVENTOS_DEFECTO = path.join(__dirname, '..', '..', 'data', 'eventos.jsonl');
 const SAL_DEFECTO = process.env.ANALITICA_SALT || 'ponga-nuclear-vii-anon-2026';
+const INTERVALO_TEMPORAL_SEG = 300; // 5 minutos
+const MAX_CUBETAS_TEMPORALES = 12;  // última hora en pasos de 5 min
+const DIAS_SEMANA_ISO = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+const FRANJAS_HORARIAS_2H = [0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22];
+
+function formatearHoraLocal(ms, zona) {
+  const f = new Intl.DateTimeFormat('en-GB', {
+    timeZone: zona,
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  });
+  return f.format(new Date(ms));
+}
+
+function construirSerieTemporal5Min(filas, zona) {
+  if (!filas || filas.length === 0) return [];
+  const porBucket = new Map();
+  for (const r of filas) {
+    porBucket.set(Number(r.bucket_seg), Number(r.eventos) || 0);
+  }
+  const ordenados = [...porBucket.keys()].sort((a, b) => a - b);
+  const ultimo = ordenados[ordenados.length - 1];
+  const minVentana = ultimo - (MAX_CUBETAS_TEMPORALES - 1) * INTERVALO_TEMPORAL_SEG;
+  const inicio = Math.max(ordenados[0], minVentana);
+
+  const serie = [];
+  for (let seg = inicio; seg <= ultimo; seg += INTERVALO_TEMPORAL_SEG) {
+    const ms = seg * 1000;
+    serie.push({
+      hora: formatearHoraLocal(ms, zona),
+      hora_fin: formatearHoraLocal(ms + INTERVALO_TEMPORAL_SEG * 1000, zona),
+      inicio_en: iso(ms),
+      eventos: porBucket.get(seg) || 0,
+    });
+  }
+  return serie;
+}
+
+function construirMapaCalor(filas, zona) {
+  const mapa = new Map();
+  let totalInteracciones = 0;
+  let maxInteracciones = 0;
+  let minTs = null;
+  let maxTs = null;
+
+  for (const r of filas || []) {
+    const diaIso = Number(r.dia_iso);
+    const franja = Number(r.franja_hora);
+    const n = Number(r.interacciones) || 0;
+    mapa.set(`${diaIso}:${franja}`, n);
+    totalInteracciones += n;
+    if (n > maxInteracciones) maxInteracciones = n;
+    const fMin = r.min_ts != null ? Number(r.min_ts) : null;
+    const fMax = r.max_ts != null ? Number(r.max_ts) : null;
+    if (fMin != null && (minTs === null || fMin < minTs)) minTs = fMin;
+    if (fMax != null && (maxTs === null || fMax > maxTs)) maxTs = fMax;
+  }
+
+  const franjas = FRANJAS_HORARIAS_2H.map((h) => ({
+    hora: h,
+    etiqueta: `${String(h).padStart(2, '0')}:00 - ${String((h + 2) % 24).padStart(2, '0')}:00`,
+    corta: `${String(h).padStart(2, '0')}h`,
+  }));
+
+  const celdas = [];
+  for (let d = 1; d <= 7; d++) {
+    for (const f of franjas) {
+      celdas.push({
+        dia_iso: d,
+        dia_nombre: DIAS_SEMANA_ISO[d - 1],
+        franja_hora: f.hora,
+        franja_etiqueta: f.etiqueta,
+        interacciones: mapa.get(`${d}:${f.hora}`) || 0,
+      });
+    }
+  }
+
+  return {
+    zona_horaria: zona,
+    tamano_franja_horas: 2,
+    total_interacciones: totalInteracciones,
+    max_interacciones: maxInteracciones,
+    periodo: minTs != null && maxTs != null ? { desde: iso(minTs), hasta: iso(maxTs) } : null,
+    dias: DIAS_SEMANA_ISO,
+    franjas,
+    celdas,
+  };
+}
 
 /** Anonimiza de forma irreversible y determinista el identificador de dispositivo. */
 function anonimizarDispositivo(idCrudo, sal = SAL_DEFECTO) {
@@ -127,10 +216,18 @@ async function ejecutarPipeline({ pool, rutaJsonl = RUTA_EVENTOS_DEFECTO, ahora 
 async function obtenerTablero({ pool, idEst, idSesion = null, rutaJsonl = RUTA_EVENTOS_DEFECTO, ahora = Date.now }) {
   const ultimaEjec = await ejecutarPipeline({ pool, rutaJsonl, ahora });
 
+  const resZona = await pool.query(
+    'SELECT zona_horaria FROM e5_config_establecimiento WHERE id_establecimiento = $1',
+    [idEst],
+  );
+  const zonaHoraria = (resZona.rows[0] && resZona.rows[0].zona_horaria) || 'America/Bogota';
+
   const filtroSesSol = idSesion ? 'AND s.id_sesion = $2' : '';
   const filtroSesRep = idSesion ? 'AND r.id_sesion = $2' : '';
   const filtroSesEv = idSesion ? 'AND e.sesion_id = $2' : '';
   const params = idSesion ? [idEst, idSesion] : [idEst];
+  const paramsZona = idSesion ? [idEst, idSesion, zonaHoraria] : [idEst, zonaHoraria];
+  const paramZonaIdx = idSesion ? '$3' : '$2';
 
   const [
     resSol,
@@ -142,6 +239,7 @@ async function obtenerTablero({ pool, idEst, idSesion = null, rutaJsonl = RUTA_E
     resCumplLista,
     resHistorial,
     resTemporal,
+    resMapaCalor,
     resCorridas,
     resMuestraAnon,
     resCrudosCheck,
@@ -229,16 +327,27 @@ async function obtenerTablero({ pool, idEst, idSesion = null, rutaJsonl = RUTA_E
       params,
     ),
     pool.query(
-      `SELECT to_char(to_timestamp(floor((e.fecha_hora / 1000.0) / 1800) * 1800) AT TIME ZONE 'America/Bogota', 'HH24:MI') AS hora,
-              COUNT(*)::int AS eventos,
-              MIN(e.fecha_hora) AS orden_ts
+      `SELECT (floor((e.fecha_hora / 1000.0) / 300)::bigint * 300) AS bucket_seg,
+              COUNT(*)::int AS eventos
        FROM e5_analitica_evento e
        WHERE (e.id_establecimiento = $1 OR e.id_establecimiento IS NULL) ${filtroSesEv}
          AND e.tipo IN ('dispositivo_unido', 'busqueda_realizada', 'solicitud_creada', 'voto_registrado', 'voto_cambiado')
-       GROUP BY floor((e.fecha_hora / 1000.0) / 1800)
-       ORDER BY orden_ts DESC
+       GROUP BY bucket_seg
+       ORDER BY bucket_seg DESC
        LIMIT 12`,
       params,
+    ),
+    pool.query(
+      `SELECT EXTRACT(ISODOW FROM (to_timestamp(e.fecha_hora / 1000.0) AT TIME ZONE ${paramZonaIdx}))::int AS dia_iso,
+              (FLOOR(EXTRACT(HOUR FROM (to_timestamp(e.fecha_hora / 1000.0) AT TIME ZONE ${paramZonaIdx})) / 2)::int * 2) AS franja_hora,
+              COUNT(*)::int AS interacciones,
+              MIN(e.fecha_hora) AS min_ts,
+              MAX(e.fecha_hora) AS max_ts
+       FROM e5_analitica_evento e
+       WHERE (e.id_establecimiento = $1 OR e.id_establecimiento IS NULL) ${filtroSesEv}
+         AND e.tipo IN ('dispositivo_unido', 'busqueda_realizada', 'solicitud_creada', 'voto_registrado', 'voto_cambiado')
+       GROUP BY dia_iso, franja_hora`,
+      paramsZona,
     ),
     pool.query(
       `SELECT id_corrida, ejecutado_en, leidos, validos, duplicados, descartados, anonimizados
@@ -293,7 +402,9 @@ async function obtenerTablero({ pool, idEst, idSesion = null, rutaJsonl = RUTA_E
       },
     },
     popularidad: resTop.rows,
-    participacion_temporal: resTemporal.rows.slice().reverse().map((r) => ({ hora: r.hora, eventos: r.eventos })),
+    intervalo_temporal_minutos: 5,
+    participacion_temporal: construirSerieTemporal5Min(resTemporal.rows, zonaHoraria),
+    mapa_calor: construirMapaCalor(resMapaCalor.rows, zonaHoraria),
     historial_reproducciones: resHistorial.rows.map((r) => ({
       id_reproduccion: `REP-${r.id_reproduccion}`,
       id_sesion: r.id_sesion,

@@ -1,35 +1,21 @@
 'use strict';
 (function () {
   const btn1 = document.getElementById('btn-descarga');
-  const btn2 = document.getElementById('btn-descarga-2');
   const heroMeta = document.getElementById('hero-meta');
   const estadoAviso = document.getElementById('estado-aviso');
-  const metaVersion = document.getElementById('meta-version');
-  const metaTamano = document.getElementById('meta-tamano');
-  const metaFecha = document.getElementById('meta-fecha');
-  const metaAndroid = document.getElementById('meta-android');
-  const metaSha = document.getElementById('meta-sha');
-  const btnCopiarSha = document.getElementById('btn-copiar-sha');
 
-  function formatMb(bytes) {
-    if (typeof bytes !== 'number' || !Number.isFinite(bytes) || bytes <= 0) return 'No disponible';
-    return `${(bytes / (1024 * 1024)).toFixed(2)} MB (${bytes.toLocaleString('es-CO')} bytes)`;
-  }
-
-  function fijarBotones(habilitado, texto) {
-    [btn1, btn2].forEach((b) => {
-      if (!b) return;
-      b.textContent = texto;
-      if (habilitado) {
-        b.classList.remove('is-disabled');
-        b.setAttribute('aria-disabled', 'false');
-        b.setAttribute('href', '/descargar/app.apk');
-      } else {
-        b.classList.add('is-disabled');
-        b.setAttribute('aria-disabled', 'true');
-        b.removeAttribute('href');
-      }
-    });
+  function fijarBoton(habilitado, texto) {
+    if (!btn1) return;
+    btn1.textContent = texto;
+    if (habilitado) {
+      btn1.classList.remove('is-disabled');
+      btn1.setAttribute('aria-disabled', 'false');
+      btn1.setAttribute('href', '/descargar/app.apk');
+    } else {
+      btn1.classList.add('is-disabled');
+      btn1.setAttribute('aria-disabled', 'true');
+      btn1.removeAttribute('href');
+    }
   }
 
   function fijarEstado(clase, texto) {
@@ -42,49 +28,25 @@
       const resp = await fetch('/api/descarga', { cache: 'no-store' });
       const data = await resp.json().catch(() => null);
       if (!resp.ok || !data) {
-        fijarBotones(false, 'Disponible pronto');
-        heroMeta.textContent = 'Paquete en preparación.';
-        fijarEstado('warn', (data && data.error && data.error.mensaje) || 'La descarga pública del APK aún no está publicada.');
-        metaVersion.textContent = 'Pendiente de publicación';
-        metaTamano.textContent = 'Pendiente de publicación';
-        metaFecha.textContent = 'Pendiente de publicación';
-        metaSha.textContent = 'Pendiente de publicación';
+        fijarBoton(false, 'Descarga en preparación');
+        heroMeta.textContent = 'Aplicación oficial para Android';
+        fijarEstado('warn', (data && data.error && data.error.mensaje) || 'La descarga pública de la aplicación aún no está habilitada.');
         return;
       }
 
-      const ver = data.version_name
-        ? `v${data.version_name}${data.version_code != null ? ` (código ${data.version_code})` : ''}`
-        : 'Sin versión';
-      metaVersion.textContent = ver;
-      metaTamano.textContent = formatMb(data.tamano_bytes);
-      metaFecha.textContent = data.fecha_publicacion || 'Pendiente';
-      metaAndroid.textContent = data.android_minimo || 'Android 8.0 (API 26)';
-      metaSha.textContent = data.sha256 || 'No disponible';
-
-      if (data.sha256 && btnCopiarSha) {
-        btnCopiarSha.disabled = false;
-        btnCopiarSha.addEventListener('click', async () => {
-          try {
-            await navigator.clipboard.writeText(data.sha256);
-            btnCopiarSha.textContent = 'Copiado';
-            setTimeout(() => { btnCopiarSha.textContent = 'Copiar'; }, 1800);
-          } catch {}
-        });
-      }
-
       if (data.publicado) {
-        fijarBotones(true, 'DESCARGAR PONGA PUES');
-        heroMeta.textContent = `${ver} · ${formatMb(data.tamano_bytes)}`;
-        fijarEstado('ok', 'Paquete oficial verificado y listo para descargar.');
+        fijarBoton(true, 'DESCARGAR PONGA PUES');
+        heroMeta.textContent = 'Aplicación oficial para Android · Instalación directa y segura';
+        fijarEstado('ok', 'Aplicación oficial lista para descargar en tu celular Android.');
       } else {
-        fijarBotones(false, 'Disponible pronto');
-        heroMeta.textContent = `${ver} · Compilada, pendiente de publicación pública.`;
-        fijarEstado('warn', 'El paquete ya fue compilado, pero el enlace de descarga público todavía está deshabilitado.');
+        fijarBoton(false, 'Descarga en preparación');
+        heroMeta.textContent = 'Aplicación oficial para Android';
+        fijarEstado('warn', 'La aplicación está lista y pendiente de habilitar su descarga pública.');
       }
     } catch {
-      fijarBotones(false, 'Error al consultar');
-      heroMeta.textContent = 'No se pudo comprobar la versión disponible.';
-      fijarEstado('err', 'Error de red al consultar los metadatos de descarga. Recarga la página.');
+      fijarBoton(false, 'Error al consultar');
+      heroMeta.textContent = 'No se pudo comprobar la disponibilidad.';
+      fijarEstado('err', 'Error de red al consultar la descarga. Recarga la página.');
     }
   }
 

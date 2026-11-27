@@ -8,6 +8,7 @@ const express = require('express');
 const repo4 = require('../db/repositorio');
 const repo5 = require('./repositorio-e5');
 const analitica = require('./analitica');
+const { generarPdfRespaldo } = require('./pdf-respaldo');
 const { ErrorApi, manejar, iso } = require('./comun-e5');
 const { resolverVentanaInactivoMs } = require('../comun-e4');
 
@@ -295,6 +296,18 @@ function crearRouterE5({
   router.get('/respaldos/:idRespaldo', soloAdmin, manejar(async (req, res) => {
     const r = await bonus.obtenerRespaldo(req.usuario.id_establecimiento, idEntero(req.params.idRespaldo, 'idRespaldo'));
     res.set('Content-Disposition', `attachment; filename="respaldo-listas-${r.id_respaldo}.json"`).json(r);
+  }));
+  router.get('/respaldos/:idRespaldo/pdf', soloAdmin, manejar(async (req, res) => {
+    const idEst = req.usuario.id_establecimiento;
+    const r = await bonus.obtenerRespaldo(idEst, idEntero(req.params.idRespaldo, 'idRespaldo'));
+    const est = await repo5.obtenerEstablecimiento(pool, idEst);
+    const pdf = generarPdfRespaldo({
+      establecimientoNombre: (est && est.nombre) || 'PONGA PUES',
+      respaldo: r,
+    });
+    res.set('Content-Type', 'application/pdf');
+    res.set('Content-Disposition', `attachment; filename="informe-copia-seguridad-${r.id_respaldo}.pdf"`);
+    res.send(pdf);
   }));
 
   router.get('/sonido', operador, manejar(async (req, res) => {
