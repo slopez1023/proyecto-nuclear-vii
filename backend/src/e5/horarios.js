@@ -42,6 +42,31 @@ function fechaAnterior(fecha) {
   return new Date(Date.UTC(y, m - 1, d - 1)).toISOString().slice(0, 10);
 }
 
+/** "YYYY-MM-DD" del día siguiente. */
+function fechaSiguiente(fecha) {
+  const [y, m, d] = fecha.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + 1)).toISOString().slice(0, 10);
+}
+
+/**
+ * Convierte una fecha local ("YYYY-MM-DD") y minutos desde medianoche (0..1439) en la zona IANA
+ * a milisegundos epoch UTC.
+ */
+function localAMs(fecha, minutos, zona) {
+  const [y, m, d] = fecha.split('-').map(Number);
+  const targetDays = Math.floor(Date.UTC(y, m - 1, d) / 86_400_000);
+  let guess = Date.UTC(y, m - 1, d, Math.floor(minutos / 60), minutos % 60, 0, 0);
+  for (let i = 0; i < 2; i++) {
+    const p = partesLocales(guess, zona);
+    const [py, pm, pd] = p.fecha.split('-').map(Number);
+    const pDays = Math.floor(Date.UTC(py, pm - 1, pd) / 86_400_000);
+    const diffMin = ((targetDays - pDays) * 1440) + (minutos - p.minutos);
+    if (diffMin === 0) break;
+    guess += diffMin * 60_000;
+  }
+  return guess;
+}
+
 /**
  * Franja que aplica a una fecha local: { apertura, cierre, origen } o null si ese día está cerrado.
  * @param {{horarios:Array<{dia_semana:number,apertura_min:number,cierre_min:number,activo:boolean}>,
@@ -67,17 +92,45 @@ function evaluarHorario(cfg, ms, zona) {
   const base = { fecha_local: ahora.fecha, hora_local: horaLocal, dia_semana: ahora.dia };
 
   // 1) Madrugada de la franja de ayer que cruza la medianoche.
-  const ayer = franjaDelDia(cfg, fechaAnterior(ahora.fecha), (ahora.dia + 6) % 7);
+  const fechaAyer = fechaAnterior(ahora.fecha);
+  const ayer = franjaDelDia(cfg, fechaAyer, (ahora.dia + 6) % 7);
   if (ayer && cruzaMedianoche(ayer) && ahora.minutos < ayer.cierre) {
-    return { ...base, abierto: true, motivo: 'franja_de_ayer', franja: ayer };
+    return {
+      ...base,
+      abierto: true,
+      motivo: 'franja_de_ayer',
+      franja: ayer,
+      fecha_jornada: fechaAyer,
+      apertura_programada_en: localAMs(fechaAyer, ayer.apertura, zona),
+      cierre_programado_en: localAMs(ahora.fecha, ayer.cierre, zona),
+    };
   }
   // 2) Franja de hoy.
   const hoy = franjaDelDia(cfg, ahora.fecha, ahora.dia);
-  if (!hoy) return { ...base, abierto: false, motivo: 'dia_cerrado', franja: null };
+  if (!hoy) {
+    return {
+      ...base,
+      abierto: false,
+      motivo: 'dia_cerrado',
+      franja: null,
+      fecha_jornada: ahora.fecha,
+      apertura_programada_en: null,
+      cierre_programado_en: null,
+    };
+  }
   const dentro = cruzaMedianoche(hoy)
     ? ahora.minutos >= hoy.apertura
     : ahora.minutos >= hoy.apertura && ahora.minutos < hoy.cierre;
-  return { ...base, abierto: dentro, motivo: dentro ? 'en_horario' : 'fuera_de_horario', franja: hoy };
+  const fechaCierre = cruzaMedianoche(hoy) ? fechaSiguiente(ahora.fecha) : ahora.fecha;
+  return {
+    ...base,
+    abierto: dentro,
+    motivo: dentro ? 'en_horario' : 'fuera_de_horario',
+    franja: hoy,
+    fecha_jornada: ahora.fecha,
+    apertura_programada_en: localAMs(ahora.fecha, hoy.apertura, zona),
+    cierre_programado_en: localAMs(fechaCierre, hoy.cierre, zona),
+  };
 }
 
-module.exports = { DIAS, partesLocales, zonaValida, fechaAnterior, franjaDelDia, evaluarHorario };
+module.exports = { DIAS, partesLocales, zonaValida, fechaAnterior, fechaSiguiente, localAMs, franjaDelDia, evaluarHorario };

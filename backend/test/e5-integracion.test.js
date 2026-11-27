@@ -47,25 +47,31 @@ test('QR, pausa manual, horarios automáticos y rechazo de clientes en E3/E4', c
   const reactSes = await e.pedirAdmin('POST', '/sesiones/SES-TEMP-QR/activar', { cuerpo: {} });
   assert.equal(reactSes.status, 409);
 
-  // Horario automático: reloj es 2026-11-10T20:00Z (martes 15:00 America/Bogota). Configuramos martes 18:00-23:00 -> debe cerrar.
+  // Horario automático (F8): respetar sesión manual activa, y si no hay sesión activa crear una nueva automática al abrir
   await e.pedirAdmin('PUT', '/horarios', {
     cuerpo: { zona_horaria: 'America/Bogota', horarios: [{ dia_semana: 2, apertura: '18:00', cierre: '23:00', activo: true }] },
   });
   await e.pedirAdmin('PATCH', '/establecimiento/automatico', {
-    cuerpo: { modo_automatico: true, id_sesion_principal: SESION },
+    cuerpo: { modo_automatico: true },
   });
+  // Cerramos las sesiones manuales previas para que al abrir la franja se cree la sesión automática
+  await e.pedirAdmin('POST', `/sesiones/${SESION}/desactivar`, { cuerpo: {} });
+  await e.pedirAdmin('POST', '/sesiones/SES-TEMP-QR/desactivar', { cuerpo: {} });
   await e.e5.planificador.ejecutarCiclo();
   assert.equal((await e.pedir('GET', '/api/sesiones/demo-activa-001')).body.error.codigo, 'sesion_cerrada');
 
-  // Avanzar reloj a las 19:00 Bogota (2026-11-11T00:00Z) -> se abre automáticamente
+  // Avanzar reloj a las 19:00 Bogota (2026-11-11T00:00Z) -> crea y abre sesión automática nueva
   e.reloj.avanzar(4 * 60 * 60 * 1000);
   await e.e5.planificador.ejecutarCiclo();
-  assert.equal((await e.pedir('GET', '/api/sesiones/demo-activa-001')).status, 200);
+  const panelAuto = await e.pedirAdmin('GET', '/panel');
+  const sesAuto = panelAuto.body.sesiones.find((s) => s.estado === 'activa');
+  assert.ok(sesAuto);
+  assert.equal((await e.pedir('GET', `/api/sesiones/${sesAuto.qr_token}`)).status, 200);
 
   // Pausa manual -> desactiva QR aunque el horario siga abierto
   await e.pedirAdmin('POST', '/establecimiento/pausa', { cuerpo: { pausada: true, motivo: 'Anuncio' } });
   await e.e5.planificador.ejecutarCiclo();
-  assert.equal((await e.pedir('GET', '/api/sesiones/demo-activa-001')).body.error.codigo, 'qr_desactivado');
+  assert.equal((await e.pedir('GET', `/api/sesiones/${sesAuto.qr_token}`)).body.error.codigo, 'qr_desactivado');
 }));
 
 test('mantenimiento de cola: limpia pendientes y conserva historial', conEntorno(async (e) => {

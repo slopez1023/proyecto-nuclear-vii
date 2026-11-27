@@ -14,7 +14,7 @@ async function conTransaccion(pool, fn) {
     await client.query('COMMIT');
     return resultado;
   } catch (err) {
-    await client.query('ROLLBACK').catch(() => {});
+    await client.query('ROLLBACK').catch(() => { });
     throw err;
   } finally {
     client.release();
@@ -107,35 +107,159 @@ async function incrementarVersionEstablecimiento(pool, idEstablecimiento) {
 
 // ---------------------------------------------------------------- dispositivos
 
+async function tieneColumnaActividadSesion(q) {
+  const { rows } = await q.query(
+    `SELECT EXISTS (
+       SELECT 1 FROM pg_attribute
+       WHERE attrelid = 'dispositivo_sesion'::regclass
+         AND attname = 'ultima_actividad'
+         AND NOT attisdropped
+     ) AS ok`,
+  );
+  return Boolean(rows[0] && rows[0].ok);
+}
+
 /** Registro implícito: crea o actualiza el dispositivo y su participación en la sesión. Devuelve id_dispositivo. */
 async function asegurarDispositivo(q, uuid, idSesion, ahoraMs) {
   const { rows } = await q.query(
     `INSERT INTO dispositivo (identificador_seudonimo, creado_en, ultima_actividad) VALUES ($1, $2, $2)
-     ON CONFLICT (identificador_seudonimo) DO UPDATE SET ultima_actividad = EXCLUDED.ultima_actividad
+     ON CONFLICT (identificador_seudonimo) DO UPDATE SET ultima_actividad = GREATEST(dispositivo.ultima_actividad, EXCLUDED.ultima_actividad)
      RETURNING id_dispositivo`,
     [uuid, ahoraMs],
   );
   const idDispositivo = rows[0].id_dispositivo;
-  await q.query(
-    `INSERT INTO dispositivo_sesion (id_dispositivo, id_sesion, unido_en) VALUES ($1, $2, $3)
-     ON CONFLICT (id_dispositivo, id_sesion) DO NOTHING`,
-    [idDispositivo, idSesion, ahoraMs],
-  );
+  if (await tieneColumnaActividadSesion(q)) {
+    await q.query(
+      `INSERT INTO dispositivo_sesion (id_dispositivo, id_sesion, unido_en, ultima_actividad) VALUES ($1, $2, $3, $3)
+       ON CONFLICT (id_dispositivo, id_sesion) DO UPDATE
+         SET ultima_actividad = GREATEST(COALESCE(dispositivo_sesion.ultima_actividad, 0), EXCLUDED.ultima_actividad)`,
+      [idDispositivo, idSesion, ahoraMs],
+    );
+  } else {
+    await q.query(
+      `INSERT INTO dispositivo_sesion (id_dispositivo, id_sesion, unido_en) VALUES ($1, $2, $3)
+       ON CONFLICT (id_dispositivo, id_sesion) DO NOTHING`,
+      [idDispositivo, idSesion, ahoraMs],
+    );
+  }
   return idDispositivo;
 }
 
 async function registrarConexion(q, idDispositivo, idSesion, ahoraMs) {
+  if (await tieneColumnaActividadSesion(q)) {
+    await q.query(
+      `UPDATE dispositivo_sesion
+       SET ultima_conexion = $3,
+           ultima_actividad = GREATEST(COALESCE(ultima_actividad, 0), $3)
+       WHERE id_dispositivo = $1 AND id_sesion = $2`,
+      [idDispositivo, idSesion, ahoraMs],
+    );
+  } else {
+    await q.query(
+      'UPDATE dispositivo_sesion SET ultima_conexion = $3 WHERE id_dispositivo = $1 AND id_sesion = $2',
+      [idDispositivo, idSesion, ahoraMs],
+    );
+  }
   await q.query(
-    'UPDATE dispositivo_sesion SET ultima_conexion = $3 WHERE id_dispositivo = $1 AND id_sesion = $2',
-    [idDispositivo, idSesion, ahoraMs],
+    'UPDATE dispositivo SET ultima_actividad = GREATEST(ultima_actividad, $2) WHERE id_dispositivo = $1',
+    [idDispositivo, ahoraMs],
   );
 }
 
 async function registrarDesconexion(q, idDispositivo, idSesion, ahoraMs) {
+  if (await tieneColumnaActividadSesion(q)) {
+    await q.query(
+      `UPDATE dispositivo_sesion
+       SET ultima_desconexion = $3,
+           ultima_actividad = GREATEST(COALESCE(ultima_actividad, 0), $3)
+       WHERE id_dispositivo = $1 AND id_sesion = $2`,
+      [idDispositivo, idSesion, ahoraMs],
+    );
+  } else {
+    await q.query(
+      'UPDATE dispositivo_sesion SET ultima_desconexion = $3 WHERE id_dispositivo = $1 AND id_sesion = $2',
+      [idDispositivo, idSesion, ahoraMs],
+    );
+  }
   await q.query(
-    'UPDATE dispositivo_sesion SET ultima_desconexion = $3 WHERE id_dispositivo = $1 AND id_sesion = $2',
-    [idDispositivo, idSesion, ahoraMs],
+    'UPDATE dispositivo SET ultima_actividad = GREATEST(ultima_actividad, $2) WHERE id_dispositivo = $1',
+    [idDispositivo, ahoraMs],
   );
+}
+
+async function registrarActividadDispositivo(q, idDispositivo, idSesion, ahoraMs) {
+  if (await tieneColumnaActividadSesion(q)) {
+    await q.query(
+      `UPDATE dispositivo_sesion
+       SET ultima_actividad = GREATEST(COALESCE(ultima_actividad, 0), $3)
+       WHERE id_dispositivo = $1 AND id_sesion = $2`,
+      [idDispositivo, idSesion, ahoraMs],
+    );
+  }
+  await q.query(
+    'UPDATE dispositivo SET ultima_actividad = GREATEST(ultima_actividad, $2) WHERE id_dispositivo = $1',
+    [idDispositivo, ahoraMs],
+  );
+}
+
+/**
+ * Clasifica los dispositivos vinculados a una sesión en:
+ * - activos: IDs actualmente conectados en memoria (SSE / ventana de gracia)
+ * - inactivos_recientes: no activos en memoria, con última actividad dentro de ventanaInactivoMs
+ * - desconectados: última actividad anterior a ventanaInactivoMs
+ */
+async function resumenDispositivosSesion(q, idSesion, { idsActivos = [], ahoraMs = Date.now(), ventanaInactivoMs = 30 * 60_000 } = {}) {
+  const conCol = await tieneColumnaActividadSesion(q);
+  const exprUltima = conCol
+    ? 'COALESCE(ds.ultima_actividad, ds.ultima_conexion, ds.unido_en)'
+    : 'COALESCE(ds.ultima_conexion, ds.unido_en)';
+  const { rows } = await q.query(
+    `SELECT ds.id_dispositivo, d.identificador_seudonimo, ds.unido_en,
+            ds.ultima_conexion, ds.ultima_desconexion,
+            ${exprUltima} AS ultima_actividad
+     FROM dispositivo_sesion ds
+     JOIN dispositivo d ON d.id_dispositivo = ds.id_dispositivo
+     WHERE ds.id_sesion = $1
+     ORDER BY ${exprUltima} DESC, ds.id_dispositivo ASC`,
+    [idSesion],
+  );
+  const setActivos = new Set(idsActivos.map(Number));
+  let activos = 0;
+  let inactivosRecientes = 0;
+  let desconectados = 0;
+  const detalle = rows.map((r) => {
+    const idDisp = Number(r.id_dispositivo);
+    const ult = Number(r.ultima_actividad || 0);
+    const edadMs = Math.max(0, ahoraMs - ult);
+    let estado = 'desconectado';
+    if (setActivos.has(idDisp)) {
+      estado = 'activo';
+      activos++;
+    } else if (edadMs <= ventanaInactivoMs) {
+      estado = 'inactivo_reciente';
+      inactivosRecientes++;
+    } else {
+      desconectados++;
+    }
+    return {
+      id_dispositivo: idDisp,
+      identificador_seudonimo: r.identificador_seudonimo,
+      estado,
+      unido_en: Number(r.unido_en),
+      ultima_conexion: r.ultima_conexion != null ? Number(r.ultima_conexion) : null,
+      ultima_desconexion: r.ultima_desconexion != null ? Number(r.ultima_desconexion) : null,
+      ultima_actividad: ult,
+      edad_inactividad_ms: edadMs,
+    };
+  });
+  return {
+    activos,
+    inactivos_recientes: inactivosRecientes,
+    desconectados,
+    total_registrados: rows.length,
+    ventana_inactivo_ms: ventanaInactivoMs,
+    dispositivos: detalle,
+  };
 }
 
 // ---------------------------------------------------------------- catálogo
@@ -160,7 +284,7 @@ async function guardarCancion(q, c) {
        consultado_en = EXCLUDED.consultado_en
      RETURNING ${COLUMNAS_CANCION}`,
     [c.youtube_video_id, c.titulo, c.artista_canal, c.duracion_segundos, c.url_miniatura,
-      c.disponibilidad, c.motivo_no_permitida, c.consultado_en],
+    c.disponibilidad, c.motivo_no_permitida, c.consultado_en],
   );
   return rows[0];
 }
@@ -315,6 +439,7 @@ module.exports = {
   upsertEstablecimiento, upsertSesion, obtenerSesion, bloquearEstablecimientoYSesion,
   incrementarVersion, incrementarVersionSesionActiva, incrementarVersionEstablecimiento,
   asegurarDispositivo, registrarConexion, registrarDesconexion,
+  registrarActividadDispositivo, resumenDispositivosSesion,
   obtenerCancion, guardarCancion, insertarCancionSemilla,
   leerColaPendiente, obtenerSolicitud, solicitudVivaDeCancion, existeVoto, insertarSolicitud, insertarVoto,
   solicitudesVotadasPor, cambiarEstadoSolicitud,
