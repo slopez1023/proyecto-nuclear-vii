@@ -117,10 +117,12 @@ async function listarSesiones(q, idEst) {
             (SELECT COUNT(*) FROM solicitud x WHERE x.id_sesion = s.id_sesion AND x.estado = 'pendiente')::int AS pendientes,
             (SELECT COUNT(*) FROM solicitud x WHERE x.id_sesion = s.id_sesion)::int AS solicitudes_historicas,
             j.id_jornada, j.abierta_en, j.origen_apertura,
-            (qd.id_sesion IS NOT NULL) AS desactivado_permanente
+            (qd.id_sesion IS NOT NULL) AS desactivado_permanente,
+            ca.codigo AS codigo_acceso
      FROM sesion s
      LEFT JOIN e5_jornada j ON j.id_sesion = s.id_sesion AND j.cerrada_en IS NULL
      LEFT JOIN e5_qr_desactivado qd ON qd.id_sesion = s.id_sesion
+     LEFT JOIN e5_codigo_acceso ca ON ca.id_sesion = s.id_sesion AND ca.vigente
      WHERE s.id_establecimiento = $1 ORDER BY s.id_sesion`,
     [idEst],
   );

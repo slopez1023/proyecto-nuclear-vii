@@ -96,6 +96,12 @@ async function main() {
     },
   });
 
+  // Confía en el primer proxy HTTP en Railway para que req.ip refleje al cliente al limitar fuerza bruta.
+  const tp = process.env.TRUST_PROXY ?? (process.env.RAILWAY_ENVIRONMENT ? '1' : '');
+  if (tp !== '') {
+    app.set('trust proxy', /^\d+$/.test(tp) ? Number(tp) : tp);
+  }
+
   const e5 = montarE5(app, {
     pool,
     youtube,

@@ -1143,7 +1143,62 @@
     sincronizarYoutube();
   }
 
+  function estadoAccesoInfo(s) {
+    if (s.desactivado_permanente) return { clase: 'err', texto: 'Acceso revocado' };
+    if (!s.codigo_acceso) return { clase: '', texto: 'Sesión creada antes del acceso por código: solo QR' };
+    if (s.estado === 'activa' && s.qr_estado === 'activo') return { clase: 'ok', texto: 'Acceso habilitado' };
+    return { clase: 'warn', texto: 'Acceso en pausa / fuera de horario' };
+  }
+
+  function codigoAccesoHtml(codigo, desactivado) {
+    if (!codigo) {
+      return '<div class="muted">Sin código de 6 dígitos asociado (solo QR).</div>';
+    }
+    const digitos = String(codigo).split('');
+    const cajas = digitos.map((d, i) => (
+      `${i === 3 ? '<span class="codigo-sep" aria-hidden="true">·</span>' : ''}<span>${esc(d)}</span>`
+    )).join('');
+    return `<div class="codigo-acceso${desactivado ? ' codigo-revocado' : ''}" aria-label="Código de acceso ${esc(codigo)}">${cajas}</div>`;
+  }
+
+  function imprimirTarjetaAcceso(s) {
+    const win = window.open('', '_blank', 'width=560,height=740');
+    if (!win) {
+      showToast('Permite las ventanas emergentes para imprimir la tarjeta.', true);
+      return;
+    }
+    const qrSrc = `/api/admin/sesiones/${encodeURIComponent(s.id_sesion)}/qr.png`;
+    const codigoFmt = s.codigo_acceso ? `${s.codigo_acceso.slice(0, 3)} ${s.codigo_acceso.slice(3)}` : '';
+    const vigencia = estadoAccesoInfo(s).texto;
+    win.document.write(`<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><title>Acceso ${esc(s.id_sesion)} — PONGA PUES</title>
+<style>
+  body { margin:0; padding:32px; font-family:Manrope,system-ui,sans-serif; background:#f7f8fc; color:#11131c; display:flex; justify-content:center; }
+  .sheet { background:#fff; border:2px solid #252b3a; border-radius:20px; padding:28px; max-width:420px; width:100%; text-align:center; }
+  .logo { width:72px; height:72px; object-fit:contain; }
+  h1 { margin:8px 0 4px; font-size:1.35rem; letter-spacing:.04em; }
+  .sub { color:#4a5164; font-size:.92rem; margin:0 0 18px; }
+  .qr { width:240px; height:240px; border:1px solid #d7dce8; border-radius:14px; padding:10px; background:#fff; }
+  .cod-label { margin:18px 0 6px; font-size:.78rem; font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:#5a4ae3; }
+  .cod { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:2.3rem; font-weight:800; letter-spacing:.18em; background:#f1effe; border:1px solid #8b7cff; border-radius:12px; padding:10px 14px; }
+  .meta { margin-top:16px; font-size:.82rem; color:#576075; }
+  @media print { body { background:#fff; padding:0; } .sheet { border:1px solid #000; } }
+</style></head><body>
+  <div class="sheet">
+    <img class="logo" src="/ponga-logo.png" alt="PONGA PUES">
+    <h1>PONGA PUES</h1>
+    <p class="sub">Escanea el código QR o ingresa el código de 6 dígitos en la aplicación.</p>
+    <img class="qr" src="${esc(qrSrc)}" alt="QR ${esc(s.id_sesion)}">
+    ${codigoFmt ? `<div class="cod-label">Código de acceso</div><div class="cod">${esc(codigoFmt)}</div>` : ''}
+    <div class="meta">Sesión: <strong>${esc(s.id_sesion)}</strong> · ${esc(vigencia)}</div>
+  </div>
+  <script>window.addEventListener('load', () => { setTimeout(() => window.print(), 180); });</script>
+</body></html>`);
+    win.document.close();
+  }
+
   function tarjetaSesionHtml(s) {
+    const acc = estadoAccesoInfo(s);
     return `
       <div class="card">
         <div class="between">
@@ -1156,25 +1211,47 @@
             <span class="pill ${s.qr_estado === 'activo' ? 'ok' : 'warn'}"><span class="dot"></span>QR ${esc(s.qr_estado)}</span>
           </div>
         </div>
-        <div class="row mt">
-          ${s.estado === 'activa' || !s.desactivado_permanente
-            ? `<img class="qr-preview" src="/api/admin/sesiones/${encodeURIComponent(s.id_sesion)}/qr.png" alt="QR ${esc(s.id_sesion)}">`
-            : ''}
-          <div style="flex:1;min-width:180px">
-            <p class="muted">URL para app móvil:<br><code>${esc(s.qr_url)}</code></p>
-            <p class="muted">Pendientes en cola: <strong>${s.pendientes}</strong> · Históricas: <strong>${s.solicitudes_historicas}</strong></p>
-            <div class="row mt">
-              ${s.estado === 'activa'
-                ? `
-                  <button class="btn sm danger" data-des="${esc(s.id_sesion)}">Cerrar sesión</button>
-                  ${!s.desactivado_permanente && s.qr_estado === 'activo'
-                    ? `<button class="btn sm" data-qr="${esc(s.id_sesion)}" data-qract="0">Desactivar QR</button>`
-                    : '<span class="pill warn">QR desactivado (no reutilizable)</span>'}
-                `
-                : (s.desactivado_permanente
-                  ? '<span class="pill err">Cerrada permanentemente</span>'
-                  : `<button class="btn sm success" data-act="${esc(s.id_sesion)}">Activar sesión y QR</button>`)}
+        <div class="acceso-sesion-box mt">
+          <div class="between">
+            <span class="eyebrow">ACCESO A LA SESIÓN</span>
+            <span class="pill ${acc.clase}"><span class="dot"></span>${esc(acc.texto)}</span>
+          </div>
+          <div class="row mt" style="align-items:flex-start">
+            ${s.estado === 'activa' || !s.desactivado_permanente
+              ? `<img class="qr-preview" src="/api/admin/sesiones/${encodeURIComponent(s.id_sesion)}/qr.png" alt="QR ${esc(s.id_sesion)}">`
+              : ''}
+            <div style="flex:1;min-width:210px">
+              <div class="muted">Sesión: <code>${esc(s.id_sesion)}</code></div>
+              <div class="mt-sm">
+                <div class="muted" style="margin-bottom:6px">Código numérico (6 dígitos)</div>
+                ${codigoAccesoHtml(s.codigo_acceso, s.desactivado_permanente)}
+              </div>
+              <p class="muted mt-sm">URL para app móvil:<br><code>${esc(s.qr_url)}</code></p>
+              <div class="row mt-sm">
+                ${s.codigo_acceso
+                  ? `<button class="btn sm" type="button" data-copiar-codigo="${esc(s.codigo_acceso)}">Copiar código</button>`
+                  : ''}
+                <button class="btn sm" type="button" data-copiar-qr="${esc(s.qr_url)}">Copiar enlace QR</button>
+                ${!s.desactivado_permanente
+                  ? `<button class="btn sm" type="button" data-imprimir-acceso="${esc(s.id_sesion)}">Imprimir tarjeta</button>`
+                  : ''}
+              </div>
             </div>
+          </div>
+        </div>
+        <div class="between mt">
+          <p class="muted" style="margin:0">Pendientes en cola: <strong>${s.pendientes}</strong> · Históricas: <strong>${s.solicitudes_historicas}</strong></p>
+          <div class="row">
+            ${s.estado === 'activa'
+              ? `
+                <button class="btn sm danger" data-des="${esc(s.id_sesion)}">Cerrar sesión</button>
+                ${!s.desactivado_permanente && s.qr_estado === 'activo'
+                  ? `<button class="btn sm" data-qr="${esc(s.id_sesion)}" data-qract="0">Desactivar QR</button>`
+                  : '<span class="pill warn">QR desactivado (no reutilizable)</span>'}
+              `
+              : (s.desactivado_permanente
+                ? '<span class="pill err">Cerrada permanentemente</span>'
+                : `<button class="btn sm success" data-act="${esc(s.id_sesion)}">Activar sesión y QR</button>`)}
           </div>
         </div>
       </div>`;
@@ -1261,6 +1338,16 @@
     }));
     cont.querySelectorAll('[data-qr]').forEach((b) => b.addEventListener('click', async () => {
       try { await api('PATCH', `/sesiones/${encodeURIComponent(b.dataset.qr)}/qr`, { activo: b.dataset.qract === '1' }); await cargarPanel(); } catch (e) { showToast(e.message, true); }
+    }));
+    cont.querySelectorAll('[data-copiar-codigo]').forEach((b) => b.addEventListener('click', () => {
+      copiarTexto(b.dataset.copiarCodigo, 'Código de acceso copiado');
+    }));
+    cont.querySelectorAll('[data-copiar-qr]').forEach((b) => b.addEventListener('click', () => {
+      copiarTexto(b.dataset.copiarQr, 'Enlace QR copiado');
+    }));
+    cont.querySelectorAll('[data-imprimir-acceso]').forEach((b) => b.addEventListener('click', () => {
+      const ses = (p.sesiones || []).find((x) => x.id_sesion === b.dataset.imprimirAcceso);
+      if (ses) imprimirTarjetaAcceso(ses);
     }));
   }
 

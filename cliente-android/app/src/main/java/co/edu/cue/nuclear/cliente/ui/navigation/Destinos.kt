@@ -11,6 +11,8 @@ object Destinos {
     const val ARG_MOTIVO = "motivo"
 
     const val ACCESO = "acceso"
+    const val ESCANER = "escaner"
+    const val CODIGO = "codigo"
     const val QR_INVALIDO = "qr-invalido/{$ARG_MOTIVO}"
     const val INICIO = "inicio"
     const val BUSCAR = "buscar"

@@ -9,6 +9,7 @@ const crypto = require('node:crypto');
 const repo4 = require('../db/repositorio');
 const repo5 = require('./repositorio-e5');
 const { validarClaveNueva, crearOActualizarUsuario } = require('./auth');
+const { asignarCodigoNuevo } = require('./codigo-acceso');
 const { TOKEN_REGEX } = require('../sesiones');
 
 const ID_EST_REGEX = /^[A-Za-z0-9_-]{4,40}$/;
@@ -108,6 +109,7 @@ async function ejecutarBootstrapProduccion({ pool, env = process.env, ahora = Da
     );
 
     await repo5.insertarSesion(client, { idSesion: p.idSesion, idEst: p.idEst, qrToken });
+    await asignarCodigoNuevo(client, { idSesion: p.idSesion, t });
     await repo5.fijarEstadoSesion(client, p.idSesion, { estado: 'activa', qrEstado: 'activo' });
     await repo5.asegurarConfig(client, p.idEst, t);
     await repo5.actualizarConfig(client, p.idEst, { id_sesion_principal: p.idSesion }, t);

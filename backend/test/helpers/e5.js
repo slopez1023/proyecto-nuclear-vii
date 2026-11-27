@@ -20,6 +20,9 @@ async function crearEntornoE5(opciones = {}) {
       publicBaseUrl: 'https://ponga.test',
       intervaloPlanificadorMs: 60_000,
       carpetaRespaldos: require('node:path').join(require('node:os').tmpdir(), 'ponga-respaldos-test'),
+      generarCodigo: opciones.generarCodigo,
+      esperarCodigo: opciones.esperarCodigo,
+      registrarCodigo: opciones.registrarCodigo,
     },
   });
 

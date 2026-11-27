@@ -9,6 +9,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import co.edu.cue.nuclear.cliente.R
 import co.edu.cue.nuclear.cliente.data.sesion.MotivoRechazo
+import co.edu.cue.nuclear.cliente.ui.components.BotonSecundario
 import co.edu.cue.nuclear.cliente.ui.components.Brand
 import co.edu.cue.nuclear.cliente.ui.components.NuclearScreen
 import co.edu.cue.nuclear.cliente.ui.components.SimboloIcono
@@ -33,13 +34,20 @@ fun mensajeRechazo(motivo: MotivoRechazo): String = when (motivo) {
  * debe escanear de nuevo. El rechazo se comunica con un símbolo en tono de peligro, no con un título rojo.
  */
 @Composable
-fun QrInvalidoScreen(motivo: MotivoRechazo, modifier: Modifier = Modifier) {
+fun QrInvalidoScreen(
+    motivo: MotivoRechazo,
+    modifier: Modifier = Modifier,
+    onVolverAlInicio: (() -> Unit)? = null,
+) {
     NuclearScreen(
         modifier = modifier,
         scrollable = true,
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(NuclearSpacing.Md, Alignment.CenterVertically),
         header = { Brand() },
+        footer = onVolverAlInicio?.let { accion ->
+            { BotonSecundario("Volver al inicio", accion, Modifier.aparicion(4)) }
+        },
     ) {
         SimboloIcono(R.drawable.ic_qr_code, Modifier.aparicion(0), tono = TonoVisual.Peligro)
         Text(

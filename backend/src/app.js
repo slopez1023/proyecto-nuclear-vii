@@ -5,6 +5,7 @@ const { validarToken, validarTokenEnBd } = require('./sesiones');
 const { validarEvento } = require('./eventos');
 const { YoutubeError } = require('./youtube');
 const { montarRutasE4 } = require('./rutas-e4');
+const { montarDescarga } = require('./descarga');
 
 const MIN_Q = 2;
 const MAX_Q = 100;
@@ -117,6 +118,9 @@ function crearApp({ sesiones, youtube, almacenEventos, config = {}, db, ahora, c
       },
     }]);
   });
+
+  // Landing pública y distribución APK (Fase 7), antes de los estáticos generales
+  montarDescarga(app, { rutaManifiesto: config.rutaManifiestoApk });
 
   // Cliente web de respaldo (B02): la URL del QR abre esta página sin instalar ni registrarse
   const publico = path.join(__dirname, '..', 'public');

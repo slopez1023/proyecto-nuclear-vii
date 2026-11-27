@@ -1,8 +1,19 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     // AGP 9 incluye soporte integrado de Kotlin: no se aplica org.jetbrains.kotlin.android.
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
+}
+
+val rutaFirmaRelease = providers.gradleProperty("nuclear.firmaPropiedades")
+    .getOrElse("${System.getProperty("user.home")}/.ponga-pues/firma-release.properties")
+val archivoFirmaRelease = file(rutaFirmaRelease)
+val propsFirmaRelease = Properties().apply {
+    if (archivoFirmaRelease.exists()) {
+        archivoFirmaRelease.inputStream().use { load(it) }
+    }
 }
 
 // URL base del backend; se puede sobrescribir con -Pnuclear.backendUrl=...
@@ -20,14 +31,28 @@ android {
         applicationId = "co.edu.cue.nuclear.cliente"
         minSdk = 26
         targetSdk = 37
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         // Host HTTPS de los App Links (https://HOST/s/TOKEN). PLACEHOLDER hasta tener un host público:
         // la verificación autoVerify solo funciona con un dominio real que sirva /.well-known/assetlinks.json.
         manifestPlaceholders["appLinkHost"] =
             providers.gradleProperty("nuclear.appLinkHost").getOrElse("nuclear.example.com")
+    }
+
+    signingConfigs {
+        if (archivoFirmaRelease.exists()) {
+            create("release") {
+                val rutaStore = propsFirmaRelease.getProperty("storeFile")
+                if (!rutaStore.isNullOrBlank()) {
+                    storeFile = file(rutaStore)
+                }
+                storePassword = propsFirmaRelease.getProperty("storePassword")
+                keyAlias = propsFirmaRelease.getProperty("keyAlias")
+                keyPassword = propsFirmaRelease.getProperty("keyPassword")
+            }
+        }
     }
 
     buildTypes {
@@ -41,6 +66,9 @@ android {
             isMinifyEnabled = false
             buildConfigField("String", "BACKEND_URL", "\"${backendUrl("https://nuclear.example.com/")}\"")
             buildConfigField("boolean", "COLA_REAL", "true") // release usa siempre el repositorio real
+            if (archivoFirmaRelease.exists()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 
@@ -49,9 +77,21 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+        }
+    }
+
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+}
+
+androidComponents {
+    beforeVariants { variantBuilder ->
+        (variantBuilder as? com.android.build.api.variant.HasUnitTestBuilder)?.enableUnitTest = true
     }
 }
 
@@ -72,6 +112,12 @@ dependencies {
     implementation(libs.retrofit.converter.kotlinx.serialization)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.kotlinx.coroutines.android)
+    implementation(libs.androidx.camera.core)
+    implementation(libs.androidx.camera.camera2)
+    implementation(libs.androidx.camera.lifecycle)
+    implementation(libs.androidx.camera.view)
+    implementation(libs.androidx.camera.mlkit.vision)
+    implementation(libs.mlkit.barcode.scanning)
     debugImplementation(libs.androidx.compose.ui.tooling)
 
     androidTestImplementation(libs.androidx.test.ext.junit)

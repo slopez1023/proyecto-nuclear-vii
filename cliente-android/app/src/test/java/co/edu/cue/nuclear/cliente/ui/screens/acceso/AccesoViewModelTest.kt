@@ -6,6 +6,8 @@ import co.edu.cue.nuclear.cliente.data.eventos.Evento
 import co.edu.cue.nuclear.cliente.data.eventos.RegistradorFalso
 import co.edu.cue.nuclear.cliente.data.sesion.SesionActiva
 import co.edu.cue.nuclear.cliente.data.sesion.SesionActivaStore
+import co.edu.cue.nuclear.cliente.data.sesion.CodigoAccesoPeticionDto
+import co.edu.cue.nuclear.cliente.data.sesion.CodigoAccesoRespuestaDto
 import co.edu.cue.nuclear.cliente.data.sesion.EstablecimientoDto
 import co.edu.cue.nuclear.cliente.data.sesion.MotivoRechazo
 import co.edu.cue.nuclear.cliente.data.sesion.Sesion
@@ -51,8 +53,12 @@ class AccesoViewModelTest {
     private fun viewModel(token: String?, api: SesionApi) =
         AccesoViewModel(token, SesionRepository(api), dispositivos, eventos, sesionActiva)
 
+    private fun noCodigo(): Response<CodigoAccesoRespuestaDto> =
+        Response.error(404, """{"error":{"codigo":"codigo_no_disponible","mensaje":"x"}}""".toResponseBody("application/json".toMediaType()))
+
     private fun apiQueResponde(respuesta: Response<SesionDto>) = object : SesionApi {
         override suspend fun obtener(token: String) = respuesta
+        override suspend fun resolverCodigo(peticion: CodigoAccesoPeticionDto, dispositivoId: String?) = noCodigo()
     }
 
     private fun rechazo(status: Int, codigo: String): Response<SesionDto> = Response.error(
@@ -72,6 +78,7 @@ class AccesoViewModelTest {
                 llamadas++
                 return Response.success(sesionOk)
             }
+            override suspend fun resolverCodigo(peticion: CodigoAccesoPeticionDto, dispositivoId: String?) = noCodigo()
         }
 
         val vm = viewModel(null, api)
@@ -116,6 +123,7 @@ class AccesoViewModelTest {
                 if (fallar) throw IOException("sin red")
                 return Response.success(sesionOk)
             }
+            override suspend fun resolverCodigo(peticion: CodigoAccesoPeticionDto, dispositivoId: String?) = noCodigo()
         }
         val vm = viewModel("demo-activa-001", api)
         assertEquals(AccesoEstado.ErrorConexion, vm.estadoFinal())
@@ -176,6 +184,7 @@ class AccesoViewModelTest {
                 if (fallar) throw IOException("sin red")
                 return Response.success(sesionOk)
             }
+            override suspend fun resolverCodigo(peticion: CodigoAccesoPeticionDto, dispositivoId: String?) = noCodigo()
         }
         val vm = viewModel("demo-activa-001", api)
         vm.estadoFinal()

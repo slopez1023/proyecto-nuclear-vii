@@ -38,6 +38,8 @@ fun AccesoScreen(
     onEntrar: () -> Unit,
     onReintentar: () -> Unit,
     modifier: Modifier = Modifier,
+    onEscanearQr: () -> Unit = {},
+    onIngresarCodigo: () -> Unit = {},
 ) {
     NuclearScreen(
         modifier = modifier,
@@ -47,6 +49,7 @@ fun AccesoScreen(
         header = { Brand() },
         footer = {
             when (estado) {
+                AccesoEstado.SinQr -> BienvenidaBotones(onEscanearQr, onIngresarCodigo)
                 is AccesoEstado.Valido -> {
                     BotonPrincipal("Entrar", onEntrar, Modifier.aparicion(3))
                     AvisoPrivacidad("Sin nombre, correo ni datos personales.", Modifier.aparicion(4))
@@ -60,13 +63,9 @@ fun AccesoScreen(
             AccesoEstado.Cargando, is AccesoEstado.Rechazado -> {
                 // Rechazado dura un instante antes de navegar a QR inválido; se mantiene el indicador.
                 CircularProgressIndicator(color = NuclearColors.Accent)
-                Cuerpo("Validando el código QR…")
+                Cuerpo("Validando acceso a la sesión…")
             }
-            AccesoEstado.SinQr -> {
-                SimboloIcono(R.drawable.ic_qr_code, Modifier.aparicion(0))
-                Titulo("Escanea el código QR", Modifier.aparicion(1))
-                Cuerpo("Abre esta aplicación escaneando el código QR del establecimiento. No necesitas registrarte.", Modifier.aparicion(2))
-            }
+            AccesoEstado.SinQr -> BienvenidaContenido()
             AccesoEstado.ErrorConexion -> {
                 SimboloIcono(R.drawable.ic_wifi_off, Modifier.aparicion(0), tono = TonoVisual.Aviso)
                 Titulo("Sin conexión", Modifier.aparicion(1))

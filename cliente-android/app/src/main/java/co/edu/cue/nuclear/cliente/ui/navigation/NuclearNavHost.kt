@@ -29,6 +29,9 @@ import co.edu.cue.nuclear.cliente.ui.screens.acceso.AccesoEstado
 import co.edu.cue.nuclear.cliente.ui.screens.acceso.AccesoScreen
 import co.edu.cue.nuclear.cliente.ui.screens.acceso.AccesoViewModel
 import co.edu.cue.nuclear.cliente.ui.screens.acceso.QrInvalidoScreen
+import co.edu.cue.nuclear.cliente.ui.screens.codigo.CodigoAccesoScreen
+import co.edu.cue.nuclear.cliente.ui.screens.codigo.CodigoAccesoViewModel
+import co.edu.cue.nuclear.cliente.ui.screens.escaner.EscanerScreen
 import co.edu.cue.nuclear.cliente.ui.screens.buscar.BuscarScreen
 import co.edu.cue.nuclear.cliente.ui.screens.buscar.BuscarViewModel
 import co.edu.cue.nuclear.cliente.ui.screens.cola.ColaScreen
@@ -59,15 +62,17 @@ fun NuclearNavHost(
     token: String?,
     contenedor: AppContainer,
     modifier: Modifier = Modifier,
+    generacionEntrada: Int = 0,
+    onTokenObtenido: (String) -> Unit = {},
+    onReiniciarAcceso: () -> Unit = {},
 ) {
     val navController = rememberNavController()
     // Cambia cada vez que la sesión termina: la cola de la sesión anterior no debe sobrevivir a la siguiente.
     var generacionSesion by rememberSaveable { mutableIntStateOf(0) }
     // Una sola instancia de la cola para las pantallas de cola y detalle (alcance: la actividad).
     val colaViewModel: ColaViewModel? = contenedor.cola?.let { repositorio ->
-        // Con clave por token: `MainActivity` reinicia el flujo con cada QR nuevo, pero un ViewModel del alcance de la
-        // actividad sobreviviría y mostraría la cola de la sesión (¿otro establecimiento?) anterior.
-        viewModel(key = "cola-$token-$generacionSesion") { ColaViewModel(repositorio, contenedor.colaEnVivo) }
+        // Con clave por token y generación: evita heredar cola al cambiar de entrada o sesión.
+        viewModel(key = "cola-$token-$generacionEntrada-$generacionSesion") { ColaViewModel(repositorio, contenedor.colaEnVivo) }
     }
     var sesionLista by remember { mutableStateOf(false) }
     val irAAcceso: () -> Unit = {
@@ -136,7 +141,7 @@ fun NuclearNavHost(
         },
     ) {
         composable(Destinos.ACCESO) {
-            val viewModel: AccesoViewModel = viewModel(key = "acceso-$token") {
+            val viewModel: AccesoViewModel = viewModel(key = "acceso-$token-$generacionEntrada") {
                 AccesoViewModel(
                     token, contenedor.sesiones, contenedor.dispositivos, contenedor.eventos, contenedor.sesionActiva,
                     contenedor.sesionLocal,
@@ -168,6 +173,40 @@ fun NuclearNavHost(
                     navController.navigate(Destinos.INICIO) { popUpTo(Destinos.ACCESO) { inclusive = true } }
                 },
                 onReintentar = viewModel::reintentar,
+                onEscanearQr = { navController.navigate(Destinos.ESCANER) { launchSingleTop = true } },
+                onIngresarCodigo = { navController.navigate(Destinos.CODIGO) { launchSingleTop = true } },
+            )
+        }
+        composable(Destinos.ESCANER) {
+            EscanerScreen(
+                onTokenDetectado = onTokenObtenido,
+                onIngresarCodigo = {
+                    navController.navigate(Destinos.CODIGO) {
+                        popUpTo(Destinos.ESCANER) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                },
+                onVolver = { navController.popBackStack() },
+            )
+        }
+        composable(Destinos.CODIGO) {
+            val viewModelCodigo: CodigoAccesoViewModel = viewModel(key = "codigo-$generacionEntrada") {
+                CodigoAccesoViewModel(contenedor.sesiones, contenedor.dispositivos)
+            }
+            val estadoCodigo by viewModelCodigo.estado.collectAsState()
+            LaunchedEffect(estadoCodigo.tokenResuelto) {
+                val resuelto = estadoCodigo.tokenResuelto
+                if (resuelto != null) {
+                    viewModelCodigo.consumirToken()
+                    onTokenObtenido(resuelto)
+                }
+            }
+            CodigoAccesoScreen(
+                estado = estadoCodigo,
+                onCodigoCambio = viewModelCodigo::alCambiarCodigo,
+                onIngresar = viewModelCodigo::ingresar,
+                onCerrarMensaje = viewModelCodigo::limpiarMensaje,
+                onVolver = { navController.popBackStack() },
             )
         }
         composable(
@@ -176,7 +215,7 @@ fun NuclearNavHost(
         ) { entrada ->
             val motivo = MotivoRechazo.desdeCodigo(entrada.arguments?.getString(Destinos.ARG_MOTIVO))
                 ?: MotivoRechazo.TOKEN_INVALIDO
-            QrInvalidoScreen(motivo)
+            QrInvalidoScreen(motivo, onVolverAlInicio = onReiniciarAcceso)
         }
         conSesion(puerta, Destinos.INICIO) {
             InicioScreen(
